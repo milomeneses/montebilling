@@ -22,9 +22,10 @@ const defaultAllocations: AllocationForm[] = [
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const { projects, clients, addProject } = useData();
+  const { projects, clients, addProject, updateProject } = useData();
   const [allocations, setAllocations] = useState<AllocationForm[]>(defaultAllocations);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
   const visibleProjects = useMemo(() => {
     if (user && user.role !== "collaborator") return projects;
@@ -35,6 +36,11 @@ export default function ProjectsPage() {
       ),
     );
   }, [projects, user]);
+
+  const projectToEdit = useMemo(
+    () => projects.find((project) => project.id === editingProjectId) ?? null,
+    [editingProjectId, projects],
+  );
 
   const budgetSummary = useMemo(() => {
     const totals = visibleProjects.reduce<Record<string, number>>((acc, project) => {
@@ -52,6 +58,7 @@ export default function ProjectsPage() {
     const form = new FormData(event.currentTarget);
     const clientId = String(form.get("clientId"));
     const name = String(form.get("name"));
+    const brand = String(form.get("brand") ?? "");
     const description = String(form.get("description"));
     const status = String(form.get("status")) as "planning" | "wip" | "done";
     const startDate = String(form.get("startDate"));
@@ -61,6 +68,7 @@ export default function ProjectsPage() {
     addProject({
       clientId,
       name,
+      brand,
       description,
       status,
       startDate,
@@ -72,6 +80,24 @@ export default function ProjectsPage() {
     event.currentTarget.reset();
     setAllocations(defaultAllocations.map((allocation) => ({ ...allocation, id: crypto.randomUUID() })));
     setIsCreateOpen(false);
+  };
+
+  const handleUpdate = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingProjectId) return;
+    const form = new FormData(event.currentTarget);
+    updateProject(editingProjectId, {
+      clientId: String(form.get("clientId")),
+      name: String(form.get("name")),
+      brand: String(form.get("brand") ?? ""),
+      description: String(form.get("description")),
+      status: String(form.get("status")) as "planning" | "wip" | "done",
+      startDate: String(form.get("startDate")),
+      endDate: String(form.get("endDate")),
+      budget: Number(form.get("budget")),
+      currency: String(form.get("currency")) as "USD" | "ARS" | "COP",
+    });
+    setEditingProjectId(null);
   };
 
   const updateAllocation = (id: string, field: keyof AllocationForm, value: string) => {
@@ -148,6 +174,9 @@ export default function ProjectsPage() {
                   <div className="grid gap-1">
                     <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">{project.name}</h3>
                     <p className="text-xs text-[color:var(--text-secondary)]">{client?.name ?? project.clientId}</p>
+                    {project.brand ? (
+                      <p className="text-xs text-[color:var(--text-secondary)]">Marca: {project.brand}</p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-secondary)]">
                     <span className="tag">{project.status}</span>
@@ -161,6 +190,17 @@ export default function ProjectsPage() {
                 {project.description && (
                   <p className="text-sm text-[color:var(--text-secondary)]">{project.description}</p>
                 )}
+                {user && user.role !== "collaborator" ? (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setEditingProjectId(project.id)}
+                      className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--text-primary)]"
+                    >
+                      Editar proyecto
+                    </button>
+                  </div>
+                ) : null}
                 <div className="grid gap-2">
                   <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-secondary)]">Allocations</p>
                   <div className="flex flex-wrap gap-2 text-xs text-[color:var(--text-secondary)]">
@@ -191,7 +231,7 @@ export default function ProjectsPage() {
         widthClassName="max-w-4xl"
       >
         <form onSubmit={handleCreate} className="mt-6 grid gap-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Cliente
               <select
@@ -211,6 +251,14 @@ export default function ProjectsPage() {
               <input
                 name="name"
                 required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Marca
+              <input
+                name="brand"
+                placeholder="Producto o marca final"
                 className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>
@@ -342,6 +390,130 @@ export default function ProjectsPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(editingProjectId)}
+        onClose={() => setEditingProjectId(null)}
+        title={projectToEdit ? `Editar ${projectToEdit.name}` : "Editar proyecto"}
+        description="Actualiza la marca, fechas y presupuesto sin perder el histórico."
+        widthClassName="max-w-4xl"
+      >
+        {projectToEdit ? (
+          <form onSubmit={handleUpdate} className="mt-6 grid gap-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Cliente
+                <select
+                  name="clientId"
+                  defaultValue={projectToEdit.clientId}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                >
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Nombre del proyecto
+                <input
+                  name="name"
+                  defaultValue={projectToEdit.name}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Marca
+                <input
+                  name="brand"
+                  defaultValue={projectToEdit.brand ?? ""}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+            </div>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Descripción
+              <textarea
+                name="description"
+                defaultValue={projectToEdit.description ?? ""}
+                rows={2}
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+            <div className="grid gap-4 md:grid-cols-4">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Estado
+                <select
+                  name="status"
+                  defaultValue={projectToEdit.status}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                >
+                  <option value="planning">Planning</option>
+                  <option value="wip">En progreso</option>
+                  <option value="done">Finalizado</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Inicio
+                <input
+                  type="date"
+                  name="startDate"
+                  defaultValue={projectToEdit.startDate}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Fin
+                <input
+                  type="date"
+                  name="endDate"
+                  defaultValue={projectToEdit.endDate ?? ""}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Moneda
+                <select
+                  name="currency"
+                  defaultValue={projectToEdit.currency}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                >
+                  <option value="USD">USD</option>
+                  <option value="ARS">ARS</option>
+                  <option value="COP">COP</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+                Presupuesto
+                <input
+                  type="number"
+                  name="budget"
+                  defaultValue={projectToEdit.budget}
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingProjectId(null)}
+                className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="rounded-full bg-emerald-500 px-5 py-2 text-xs font-semibold text-white hover:bg-emerald-400"
+              >
+                Guardar cambios
+              </button>
+            </div>
+          </form>
+        ) : null}
       </Modal>
     </div>
   );

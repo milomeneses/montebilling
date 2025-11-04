@@ -10,9 +10,6 @@ import {
   useState,
 } from "react";
 
-/** Permite pasar objetos parciales, incluso anidados */
-type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
-
 type Currency = "USD" | "ARS" | "COP";
 
 type Client = {
@@ -37,6 +34,7 @@ type Project = {
   id: string;
   clientId: string;
   name: string;
+  brand?: string;
   description?: string;
   status: ProjectStatus;
   startDate: string;
@@ -77,6 +75,7 @@ type Invoice = {
   lineItems: InvoiceLineItem[];
   branding: InvoiceBranding;
   verificationUrl: string;
+  bankDetails?: string;
 };
 
 type Payment = {
@@ -132,22 +131,31 @@ type ExchangeRate = {
   rate: number;
 };
 
-/* ===================== Integrations ===================== */
-
-/** Email deshabilitado: no requiere provider/fromEmail */
-type EmailSettingsDisabled = { enabled: false };
-
-/** Email habilitado: requiere provider y fromEmail */
-type EmailSettingsEnabled = {
-  enabled: true;
-  provider: "resend" | "smtp";
-  fromEmail: string;
-  apiKey?: string;
-  smtpHost?: string;
-  smtpPort?: number;
+type MonteDataState = {
+  clients: Client[];
+  projects: Project[];
+  invoices: Invoice[];
+  payments: Payment[];
+  expenses: Expense[];
+  adjustments: Adjustment[];
+  pettyCash: PettyCashRule;
+  balances: Record<string, number>;
+  exchangeRates: ExchangeRate[];
+  nextInvoiceSequence: number;
+  invoicePrefix: string;
+  invoiceNumberPadding: number;
+  defaultBankDetails: string;
+  integrations: IntegrationSettings;
+  appTemplate: AppTemplateSettings;
 };
 
-type EmailSettings = EmailSettingsDisabled | EmailSettingsEnabled;
+type AppTemplateSettings = {
+  primaryColor: string;
+  secondaryColor: string;
+  fontFamily: string;
+  logoDataUrl?: string;
+  customHtml?: string;
+};
 
 type IntegrationSettings = {
   googleOAuth: {
@@ -169,32 +177,14 @@ type IntegrationSettings = {
     serviceAccount: string;
     lastExport?: string;
   };
-  email: EmailSettings;
-};
-
-/* ======================================================== */
-
-type MonteDataState = {
-  clients: Client[];
-  projects: Project[];
-  invoices: Invoice[];
-  payments: Payment[];
-  expenses: Expense[];
-  adjustments: Adjustment[];
-  pettyCash: PettyCashRule;
-  balances: Record<string, number>;
-  exchangeRates: ExchangeRate[];
-  nextInvoiceSequence: number;
-  integrations: IntegrationSettings;
-  appTemplate: AppTemplateSettings;
-};
-
-type AppTemplateSettings = {
-  primaryColor: string;
-  secondaryColor: string;
-  fontFamily: string;
-  logoDataUrl?: string;
-  customHtml?: string;
+  email: {
+    enabled: boolean;
+    provider: "resend" | "smtp";
+    fromEmail: string;
+    apiKey?: string;
+    smtpHost?: string;
+    smtpPort?: number;
+  };
 };
 
 type CsvRow = Record<string, string> & { type: string };
@@ -204,35 +194,39 @@ type DataContextValue = MonteDataState & {
   updateClient: (id: string, input: Partial<Omit<Client, "id">>) => void;
   deleteClient: (id: string) => void;
   addProject: (input: Omit<Project, "id">) => void;
-  updateProject: (
-    id: string,
-    input: Partial<Omit<Project, "id" | "allocations">> & { allocations?: Allocation[] }
-  ) => void;
+  updateProject: (id: string, input: Partial<Omit<Project, "id" | "allocations">> & { allocations?: Allocation[] }) => void;
   deleteProject: (id: string) => void;
   createInvoice: (
-    input: Omit<Invoice, "id" | "number" | "status" | "verificationUrl"> & {
+    input: Omit<Invoice, "id" | "status" | "verificationUrl"> & {
+      number?: string;
       status?: InvoiceStatus;
       verificationUrl?: string;
-    }
+    },
   ) => Invoice;
+  updateInvoice: (
+    id: string,
+    input: Partial<Omit<Invoice, "id">> & {
+      lineItems?: InvoiceLineItem[];
+      branding?: Partial<InvoiceBranding>;
+    },
+  ) => void;
   updateInvoiceStatus: (id: string, status: InvoiceStatus) => void;
-  recordPayment: (
-    input: Omit<Payment, "id" | "pettyContribution" | "splits" | "exchangeRate"> & {
-      exchangeRate?: number;
-    }
-  ) => Payment;
+  recordPayment: (input: Omit<Payment, "id" | "pettyContribution" | "splits" | "exchangeRate"> & { exchangeRate?: number }) => Payment;
   addExpense: (input: Omit<Expense, "id">) => void;
   toggleExpenseApproval: (id: string) => void;
   addAdjustment: (input: Omit<Adjustment, "id">) => void;
   updatePettyCashRule: (rule: Pick<PettyCashRule, "ruleType" | "value">) => void;
   addExchangeRate: (input: Omit<ExchangeRate, "id">) => void;
   importFromCsv: (rows: CsvRow[]) => { summary: string; imported: number };
-  updateIntegrations: <K extends keyof IntegrationSettings>(
-    key: K,
-    input: DeepPartial<IntegrationSettings[K]>
-  ) => void;
+  updateIntegrations: (key: keyof IntegrationSettings, input: Partial<IntegrationSettings[typeof key]>) => void;
   updateAppTemplate: (input: Partial<AppTemplateSettings>) => void;
   resetAppTemplate: () => void;
+  updateInvoiceNumbering: (input: {
+    prefix?: string;
+    nextSequence?: number;
+    padding?: number;
+  }) => void;
+  updateDefaultBankDetails: (details: string) => void;
 };
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -241,6 +235,12 @@ const STORAGE_KEY = "monte-data-state";
 
 const today = new Date();
 const iso = (date: Date) => date.toISOString().slice(0, 10);
+const defaultBankDetailsText = [
+  "Banco Santander Río",
+  "Cuenta USD: 123-456789/0",
+  "CBU: 0720099876543210000012",
+  "Titular: Monte Animation Studio",
+].join("\n");
 
 const defaultState: MonteDataState = {
   clients: [
@@ -271,6 +271,7 @@ const defaultState: MonteDataState = {
       id: "project-gig-1",
       clientId: "client-winston",
       name: "Campaña Winston 2024",
+      brand: "Winston",
       description: "Spots animados para campaña global",
       status: "wip",
       startDate: iso(today),
@@ -278,15 +279,31 @@ const defaultState: MonteDataState = {
       budget: 45000,
       currency: "USD",
       allocations: [
-        { id: "alloc-milo", name: "Milo", role: "milo", percentage: 40 },
-        { id: "alloc-sergio", name: "Sergio", role: "sergio", percentage: 35 },
-        { id: "alloc-camila", name: "Camila", role: "collaborator", percentage: 25 },
+        {
+          id: "alloc-milo",
+          name: "Milo",
+          role: "milo",
+          percentage: 40,
+        },
+        {
+          id: "alloc-sergio",
+          name: "Sergio",
+          role: "sergio",
+          percentage: 35,
+        },
+        {
+          id: "alloc-camila",
+          name: "Camila",
+          role: "collaborator",
+          percentage: 25,
+        },
       ],
     },
     {
       id: "project-gig-2",
       clientId: "client-latam",
       name: "Spot streaming regional",
+      brand: "Latam",
       description: "Localización LATAM",
       status: "planning",
       startDate: iso(today),
@@ -294,15 +311,31 @@ const defaultState: MonteDataState = {
       budget: 12000000,
       currency: "ARS",
       allocations: [
-        { id: "alloc-milo-2", name: "Milo", role: "milo", percentage: 45 },
-        { id: "alloc-sergio-2", name: "Sergio", role: "sergio", percentage: 30 },
-        { id: "alloc-julian", name: "Julián", role: "collaborator", percentage: 25 },
+        {
+          id: "alloc-milo-2",
+          name: "Milo",
+          role: "milo",
+          percentage: 45,
+        },
+        {
+          id: "alloc-sergio-2",
+          name: "Sergio",
+          role: "sergio",
+          percentage: 30,
+        },
+        {
+          id: "alloc-julian",
+          name: "Julián",
+          role: "collaborator",
+          percentage: 25,
+        },
       ],
     },
     {
       id: "project-gig-3",
       clientId: "client-indigo",
       name: "Series Indigo Post",
+      brand: "Indigo",
       description: "Finalización de episodios",
       status: "done",
       startDate: iso(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate() - 3)),
@@ -310,9 +343,24 @@ const defaultState: MonteDataState = {
       budget: 22000,
       currency: "USD",
       allocations: [
-        { id: "alloc-milo-3", name: "Milo", role: "milo", percentage: 35 },
-        { id: "alloc-camila-3", name: "Camila", role: "collaborator", percentage: 30 },
-        { id: "alloc-julian-3", name: "Julián", role: "collaborator", percentage: 35 },
+        {
+          id: "alloc-milo-3",
+          name: "Milo",
+          role: "milo",
+          percentage: 35,
+        },
+        {
+          id: "alloc-camila-3",
+          name: "Camila",
+          role: "collaborator",
+          percentage: 30,
+        },
+        {
+          id: "alloc-julian-3",
+          name: "Julián",
+          role: "collaborator",
+          percentage: 35,
+        },
       ],
     },
   ],
@@ -339,6 +387,7 @@ const defaultState: MonteDataState = {
         footerText: "Gracias por elegirnos. Pagos vía transferencia internacional.",
       },
       verificationUrl: "https://billing.monteanimation.com/verify/invoice-1",
+      bankDetails: defaultBankDetailsText,
     },
     {
       id: "invoice-2",
@@ -362,6 +411,7 @@ const defaultState: MonteDataState = {
         footerText: "Se emitirá versión final con retenciones aplicadas.",
       },
       verificationUrl: "https://billing.monteanimation.com/verify/invoice-2",
+      bankDetails: defaultBankDetailsText,
     },
     {
       id: "invoice-3",
@@ -385,6 +435,7 @@ const defaultState: MonteDataState = {
         footerText: "Incluye acceso a archivos maestros en Drive.",
       },
       verificationUrl: "https://billing.monteanimation.com/verify/invoice-3",
+      bankDetails: defaultBankDetailsText,
     },
   ],
   payments: [
@@ -495,10 +546,25 @@ const defaultState: MonteDataState = {
     "Fondo Monte": 4550.2,
   },
   exchangeRates: [
-    { id: "rate-ars", date: iso(today), fromCurrency: "ARS", toCurrency: "USD", rate: 0.0011 },
-    { id: "rate-cop", date: iso(today), fromCurrency: "COP", toCurrency: "USD", rate: 0.00026 },
+    {
+      id: "rate-ars",
+      date: iso(today),
+      fromCurrency: "ARS",
+      toCurrency: "USD",
+      rate: 0.0011,
+    },
+    {
+      id: "rate-cop",
+      date: iso(today),
+      fromCurrency: "COP",
+      toCurrency: "USD",
+      rate: 0.00026,
+    },
   ],
   nextInvoiceSequence: 4,
+  invoicePrefix: "MONTE-",
+  invoiceNumberPadding: 4,
+  defaultBankDetails: defaultBankDetailsText,
   integrations: {
     googleOAuth: {
       enabled: true,
@@ -519,8 +585,6 @@ const defaultState: MonteDataState = {
       serviceAccount: "monte-billing@service-account.iam.gserviceaccount.com",
       lastExport: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7)),
     },
-    // Puedes dejarlo disabled si aún no configuras SMTP/Resend:
-    // email: { enabled: false },
     email: {
       enabled: true,
       provider: "resend",
@@ -585,7 +649,7 @@ function loadState(): MonteDataState {
   }
   try {
     const parsed = JSON.parse(stored) as MonteDataState;
-    return {
+    const merged: MonteDataState = {
       ...defaultState,
       ...parsed,
       balances: { ...defaultState.balances, ...parsed.balances },
@@ -612,6 +676,12 @@ function loadState(): MonteDataState {
         ...parsed.appTemplate,
       },
     };
+    merged.invoicePrefix = parsed.invoicePrefix ?? defaultState.invoicePrefix;
+    merged.invoiceNumberPadding =
+      parsed.invoiceNumberPadding ?? defaultState.invoiceNumberPadding;
+    merged.defaultBankDetails =
+      parsed.defaultBankDetails ?? defaultState.defaultBankDetails;
+    return merged;
   } catch (error) {
     console.error("Failed to parse stored Monte data", error);
     return defaultState;
@@ -621,7 +691,9 @@ function loadState(): MonteDataState {
 function latestRate(state: MonteDataState, currency: Currency): number {
   if (currency === "USD") return 1;
   const match = [...state.exchangeRates]
-    .filter((rate) => rate.fromCurrency === currency && rate.toCurrency === "USD")
+    .filter(
+      (rate) => rate.fromCurrency === currency && rate.toCurrency === "USD",
+    )
     .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   return match?.rate ?? 1;
 }
@@ -637,278 +709,460 @@ function convertToUsd(
   return amount * rate;
 }
 
+function formatInvoiceNumber(prefix: string, sequence: number, padding: number) {
+  const safePadding = Number.isFinite(padding) && padding > 0 ? padding : 4;
+  return `${prefix ?? ""}${String(sequence).padStart(safePadding, "0")}`;
+}
+
+function resolveVerificationUrl(identifier: string) {
+  const base =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "https://billing.monteanimation.com";
+  return `${base}/verify/${encodeURIComponent(identifier)}`;
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<MonteDataState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const stored = loadState();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- cargamos el estado persistido una sola vez al hidratar
     setState(stored);
     setHydrated(true);
   }, []);
 
-  const mutate = useCallback((updater: (draft: MonteDataState) => MonteDataState) => {
-    setState((prev) => {
-      const cloned = cloneState(prev);
-      const next = updater(cloned);
-      persistState(next);
-      return next;
-    });
-  }, []);
-
-  const addClient = useCallback((input: Omit<Client, "id">) => {
-    mutate((draft) => {
-      draft.clients.push({ ...input, id: crypto.randomUUID() });
-      return draft;
-    });
-  }, [mutate]);
-
-  const updateClient = useCallback((id: string, input: Partial<Omit<Client, "id">>) => {
-    mutate((draft) => {
-      const client = draft.clients.find((item) => item.id === id);
-      if (client) Object.assign(client, input);
-      return draft;
-    });
-  }, [mutate]);
-
-  const deleteClient = useCallback((id: string) => {
-    mutate((draft) => {
-      draft.clients = draft.clients.filter((client) => client.id !== id);
-      draft.projects = draft.projects.filter((project) => project.clientId !== id);
-      draft.invoices = draft.invoices.filter((invoice) => {
-        const project = draft.projects.find((project) => project.id === invoice.projectId);
-        return project !== undefined;
+  const mutate = useCallback(
+    (updater: (draft: MonteDataState) => MonteDataState) => {
+      setState((prev) => {
+        const cloned = cloneState(prev);
+        const next = updater(cloned);
+        persistState(next);
+        return next;
       });
-      return draft;
-    });
-  }, [mutate]);
-
-  const addProject = useCallback((input: Omit<Project, "id">) => {
-    mutate((draft) => {
-      draft.projects.push({ ...input, id: crypto.randomUUID() });
-      return draft;
-    });
-  }, [mutate]);
-
-  const updateProject = useCallback((
-    id: string,
-    input: Partial<Omit<Project, "id" | "allocations">> & { allocations?: Allocation[] },
-  ) => {
-    mutate((draft) => {
-      const project = draft.projects.find((item) => item.id === id);
-      if (project) {
-        Object.assign(project, input);
-        if (input.allocations) {
-          project.allocations = input.allocations.map((allocation) => ({ ...allocation }));
-        }
-      }
-      return draft;
-    });
-  }, [mutate]);
-
-  const deleteProject = useCallback((id: string) => {
-    mutate((draft) => {
-      draft.projects = draft.projects.filter((project) => project.id !== id);
-      draft.invoices = draft.invoices.filter((invoice) => invoice.projectId !== id);
-      draft.expenses = draft.expenses.filter((expense) => expense.projectId !== id);
-      return draft;
-    });
-  }, [mutate]);
-
-  const createInvoice = useCallback((
-    input: Omit<Invoice, "id" | "number" | "status" | "verificationUrl"> & {
-      status?: InvoiceStatus;
-      verificationUrl?: string;
     },
-  ) => {
-    const generatedId = crypto.randomUUID();
-    const baseBranding: InvoiceBranding = {
-      accentColor: input.branding?.accentColor ?? "#10b981",
-      headerText: input.branding?.headerText ?? "Factura Monte Animation",
-      footerText:
-        input.branding?.footerText ??
-        "Gracias por confiar en Monte Animation. Pago mediante transferencia bancaria.",
-      logoDataUrl: input.branding?.logoDataUrl,
-    };
-    const normalizedLineItems = (input.lineItems ?? []).map((item) => ({
-      ...item,
-      id: item.id || crypto.randomUUID(),
-    }));
-    const defaultVerification =
-      input.verificationUrl ??
-      (typeof window !== "undefined"
-        ? `${window.location.origin}/verify/${generatedId}`
-        : `https://billing.monteanimation.com/verify/${generatedId}`);
-    let created: Invoice = {
-      ...input,
-      lineItems: normalizedLineItems,
-      branding: baseBranding,
-      verificationUrl: defaultVerification,
-      id: generatedId,
-      number: "",
-      status: input.status ?? "draft",
-    } as Invoice;
-    mutate((draft) => {
-      const number = `MONTE-${String(draft.nextInvoiceSequence).padStart(4, "0")}`;
-      draft.nextInvoiceSequence += 1;
-      created = { ...created, number };
-      draft.invoices.push(created);
-      return draft;
-    });
-    return created;
-  }, [mutate]);
+    [],
+  );
 
-  const updateInvoiceStatus = useCallback((id: string, status: InvoiceStatus) => {
-    mutate((draft) => {
-      const invoice = draft.invoices.find((item) => item.id === id);
-      if (invoice) invoice.status = status;
-      return draft;
-    });
-  }, [mutate]);
-
-  const recordPayment = useCallback((
-    input: Omit<Payment, "id" | "pettyContribution" | "splits" | "exchangeRate"> & {
-      exchangeRate?: number;
-    },
-  ) => {
-    let created: Payment = {
-      ...input,
-      id: crypto.randomUUID(),
-      pettyContribution: 0,
-      splits: [],
-      exchangeRate: input.exchangeRate ?? 1,
-    } as Payment;
-
-    mutate((draft) => {
-      const invoice = draft.invoices.find((item) => item.id === input.invoiceId);
-      if (!invoice) return draft;
-
-      const project = draft.projects.find((item) => item.id === input.projectId);
-      if (!project) return draft;
-
-      const rate = input.exchangeRate ?? latestRate(draft, input.currency);
-      const petty = draft.pettyCash.ruleType === "percent"
-        ? (input.amount * draft.pettyCash.value) / 100
-        : draft.pettyCash.value;
-
-      const pettyApplied = Math.min(petty, input.amount);
-      draft.pettyCash.balance += convertToUsd(draft, pettyApplied, input.currency, rate);
-      draft.balances["Fondo Monte"] = draft.pettyCash.balance;
-
-      const net = input.amount - pettyApplied;
-      let remaining = net;
-
-      const splits: { allocationId: string; name: string; amount: number }[] = [];
-      const fixedAllocations = project.allocations.filter((a) => a.fixedAmount);
-      const percentAllocations = project.allocations.filter((a) => a.percentage);
-
-      const totalFixed = fixedAllocations.reduce(
-        (acc, a) => acc + (a.fixedAmount ?? 0), 0
-      );
-      remaining = Math.max(0, remaining - totalFixed);
-
-      fixedAllocations.forEach((a) => {
-        splits.push({ allocationId: a.id, name: a.name, amount: a.fixedAmount ?? 0 });
-        const usd = convertToUsd(draft, a.fixedAmount ?? 0, input.currency, rate);
-        draft.balances[a.name] = (draft.balances[a.name] ?? 0) + usd;
-      });
-
-      const totalPercent = percentAllocations.reduce(
-        (acc, a) => acc + (a.percentage ?? 0), 0
-      );
-      percentAllocations.forEach((a) => {
-        const ratio = (a.percentage ?? 0) / (totalPercent || 1);
-        const share = remaining * ratio;
-        splits.push({ allocationId: a.id, name: a.name, amount: share });
-        const usd = convertToUsd(draft, share, input.currency, rate);
-        draft.balances[a.name] = (draft.balances[a.name] ?? 0) + usd;
-      });
-
-      const paymentWithSplits: Payment = {
-        ...created,
-        pettyContribution: pettyApplied,
-        splits,
-        exchangeRate: rate,
-      };
-      created = paymentWithSplits;
-      draft.payments.push(paymentWithSplits);
-
-      const totalPaid = draft.payments
-        .filter((p) => p.invoiceId === invoice.id)
-        .reduce((acc, p) => acc + p.amount, 0);
-
-      if (totalPaid >= invoice.total) invoice.status = "paid";
-      else if (totalPaid > 0) invoice.status = "partial";
-
-      return draft;
-    });
-
-    return created;
-  }, [mutate]);
-
-  const addExpense = useCallback((input: Omit<Expense, "id">) => {
-    mutate((draft) => {
-      draft.expenses.push({ ...input, id: crypto.randomUUID() });
-      return draft;
-    });
-  }, [mutate]);
-
-  const toggleExpenseApproval = useCallback((id: string) => {
-    mutate((draft) => {
-      const expense = draft.expenses.find((item) => item.id === id);
-      if (expense) expense.approved = !expense.approved;
-      return draft;
-    });
-  }, [mutate]);
-
-  const addAdjustment = useCallback((input: Omit<Adjustment, "id">) => {
-    mutate((draft) => {
-      draft.adjustments.push({ ...input, id: crypto.randomUUID() });
-      const usd = convertToUsd(draft, input.amount, input.currency);
-      draft.balances[input.from] = (draft.balances[input.from] ?? 0) - usd;
-      draft.balances[input.to] = (draft.balances[input.to] ?? 0) + usd;
-      return draft;
-    });
-  }, [mutate]);
-
-  const updatePettyCashRule = useCallback((rule: Pick<PettyCashRule, "ruleType" | "value">) => {
-    mutate((draft) => {
-      draft.pettyCash.ruleType = rule.ruleType;
-      draft.pettyCash.value = rule.value;
-      return draft;
-    });
-  }, [mutate]);
-
-  const addExchangeRate = useCallback((input: Omit<ExchangeRate, "id">) => {
-    mutate((draft) => {
-      draft.exchangeRates.push({ ...input, id: crypto.randomUUID() });
-      return draft;
-    });
-  }, [mutate]);
-
-  const updateIntegrations = useCallback(
-    <K extends keyof IntegrationSettings>(
-      key: K,
-      input: DeepPartial<IntegrationSettings[K]>
-    ) => {
+  const addClient = useCallback(
+    (input: Omit<Client, "id">) => {
       mutate((draft) => {
-        draft.integrations[key] = {
-          ...(draft.integrations[key] as any),
-          ...(input as any),
-        } as IntegrationSettings[K];
+        draft.clients.push({ ...input, id: crypto.randomUUID() });
         return draft;
       });
     },
     [mutate],
   );
 
-  const updateAppTemplate = useCallback((input: Partial<AppTemplateSettings>) => {
-    mutate((draft) => {
-      draft.appTemplate = { ...draft.appTemplate, ...input };
-      return draft;
-    });
-  }, [mutate]);
+  const updateClient = useCallback(
+    (id: string, input: Partial<Omit<Client, "id">>) => {
+      mutate((draft) => {
+        const client = draft.clients.find((item) => item.id === id);
+        if (client) {
+          Object.assign(client, input);
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const deleteClient = useCallback(
+    (id: string) => {
+      mutate((draft) => {
+        draft.clients = draft.clients.filter((client) => client.id !== id);
+        draft.projects = draft.projects.filter(
+          (project) => project.clientId !== id,
+        );
+        draft.invoices = draft.invoices.filter((invoice) => {
+          const project = draft.projects.find(
+            (project) => project.id === invoice.projectId,
+          );
+          return project !== undefined;
+        });
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const addProject = useCallback(
+    (input: Omit<Project, "id">) => {
+      mutate((draft) => {
+        draft.projects.push({ ...input, id: crypto.randomUUID() });
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updateProject = useCallback(
+    (
+      id: string,
+      input: Partial<Omit<Project, "id" | "allocations">> & {
+        allocations?: Allocation[];
+      },
+    ) => {
+      mutate((draft) => {
+        const project = draft.projects.find((item) => item.id === id);
+        if (project) {
+          Object.assign(project, input);
+          if (input.allocations) {
+            project.allocations = input.allocations.map((allocation) => ({
+              ...allocation,
+            }));
+          }
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const deleteProject = useCallback(
+    (id: string) => {
+      mutate((draft) => {
+        draft.projects = draft.projects.filter((project) => project.id !== id);
+        draft.invoices = draft.invoices.filter(
+          (invoice) => invoice.projectId !== id,
+        );
+        draft.expenses = draft.expenses.filter(
+          (expense) => expense.projectId !== id,
+        );
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const createInvoice = useCallback(
+    (
+      input: Omit<Invoice, "id" | "status" | "verificationUrl"> & {
+        number?: string;
+        status?: InvoiceStatus;
+        verificationUrl?: string;
+      },
+    ) => {
+      const generatedId = crypto.randomUUID();
+      let created: Invoice | null = null;
+      mutate((draft) => {
+        const { number: requestedNumber, ...rest } = input;
+        const baseBranding: InvoiceBranding = {
+          accentColor: input.branding?.accentColor ?? "#10b981",
+          headerText: input.branding?.headerText ?? "Factura Monte Animation",
+          footerText:
+            input.branding?.footerText ??
+            "Gracias por confiar en Monte Animation. Pago mediante transferencia bancaria.",
+          logoDataUrl: input.branding?.logoDataUrl,
+        };
+        const normalizedLineItems = (input.lineItems ?? []).map((item) => ({
+          ...item,
+          id: item.id || crypto.randomUUID(),
+        }));
+        const trimmedNumber = requestedNumber?.trim();
+        const number = trimmedNumber && trimmedNumber.length
+          ? trimmedNumber
+          : formatInvoiceNumber(
+              draft.invoicePrefix,
+              draft.nextInvoiceSequence,
+              draft.invoiceNumberPadding,
+            );
+        draft.nextInvoiceSequence += 1;
+        const verification =
+          input.verificationUrl ?? resolveVerificationUrl(number || generatedId);
+        created = {
+          ...rest,
+          id: generatedId,
+          number,
+          status: input.status ?? "draft",
+          lineItems: normalizedLineItems,
+          branding: baseBranding,
+          verificationUrl: verification,
+          bankDetails: input.bankDetails ?? draft.defaultBankDetails,
+        } as Invoice;
+        draft.invoices.push(created);
+        return draft;
+      });
+      return created as Invoice;
+    },
+    [mutate],
+  );
+
+  const updateInvoice = useCallback(
+    (
+      id: string,
+      input: Partial<Omit<Invoice, "id">> & {
+        lineItems?: InvoiceLineItem[];
+        branding?: Partial<InvoiceBranding>;
+      },
+    ) => {
+      mutate((draft) => {
+        const invoice = draft.invoices.find((item) => item.id === id);
+        if (!invoice) {
+          return draft;
+        }
+        if (typeof input.projectId === "string") {
+          invoice.projectId = input.projectId;
+        }
+        if (typeof input.number === "string" && input.number.trim().length > 0) {
+          invoice.number = input.number.trim();
+          invoice.verificationUrl = resolveVerificationUrl(invoice.number);
+        }
+        if (typeof input.issueDate === "string") {
+          invoice.issueDate = input.issueDate;
+        }
+        if (typeof input.dueDate === "string") {
+          invoice.dueDate = input.dueDate;
+        }
+        if (typeof input.currency === "string") {
+          invoice.currency = input.currency as Currency;
+        }
+        if (input.notes !== undefined) {
+          invoice.notes = input.notes;
+        }
+        if (input.status) {
+          invoice.status = input.status;
+        }
+        if (input.bankDetails !== undefined) {
+          invoice.bankDetails = input.bankDetails;
+        }
+        if (input.branding) {
+          invoice.branding = { ...invoice.branding, ...input.branding };
+        }
+        if (input.lineItems) {
+          const normalized = input.lineItems.map((item) => ({
+            ...item,
+            id: item.id || crypto.randomUUID(),
+          }));
+          invoice.lineItems = normalized;
+          if (input.subtotal === undefined) {
+            invoice.subtotal = normalized.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+          }
+        }
+        if (typeof input.subtotal === "number") {
+          invoice.subtotal = input.subtotal;
+        }
+        if (typeof input.taxes === "number") {
+          invoice.taxes = input.taxes;
+        }
+        if (typeof input.total === "number") {
+          invoice.total = input.total;
+        } else if (input.lineItems || input.taxes !== undefined || input.subtotal !== undefined) {
+          invoice.total = invoice.subtotal + invoice.taxes;
+        }
+        if (input.attachments) {
+          invoice.attachments = [...input.attachments];
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updateInvoiceStatus = useCallback(
+    (id: string, status: InvoiceStatus) => {
+      mutate((draft) => {
+        const invoice = draft.invoices.find((item) => item.id === id);
+        if (invoice) {
+          invoice.status = status;
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const recordPayment = useCallback(
+    (
+      input: Omit<Payment, "id" | "pettyContribution" | "splits" | "exchangeRate"> & {
+        exchangeRate?: number;
+      },
+    ) => {
+      let created: Payment = {
+        ...input,
+        id: crypto.randomUUID(),
+        pettyContribution: 0,
+        splits: [],
+        exchangeRate: input.exchangeRate ?? 1,
+      } as Payment;
+
+      mutate((draft) => {
+        const invoice = draft.invoices.find(
+          (item) => item.id === input.invoiceId,
+        );
+        if (!invoice) {
+          return draft;
+        }
+        const project = draft.projects.find(
+          (item) => item.id === input.projectId,
+        );
+        if (!project) {
+          return draft;
+        }
+        const rate = input.exchangeRate ?? latestRate(draft, input.currency);
+        const petty = draft.pettyCash.ruleType === "percent"
+          ? (input.amount * draft.pettyCash.value) / 100
+          : draft.pettyCash.value;
+        const pettyApplied = Math.min(petty, input.amount);
+        draft.pettyCash.balance += convertToUsd(
+          draft,
+          pettyApplied,
+          input.currency,
+          rate,
+        );
+        draft.balances["Fondo Monte"] = draft.pettyCash.balance;
+        const net = input.amount - pettyApplied;
+        let remaining = net;
+        const splits: { allocationId: string; name: string; amount: number }[] = [];
+        const fixedAllocations = project.allocations.filter(
+          (allocation) => allocation.fixedAmount,
+        );
+        const percentAllocations = project.allocations.filter(
+          (allocation) => allocation.percentage,
+        );
+        const totalFixed = fixedAllocations.reduce(
+          (acc, allocation) => acc + (allocation.fixedAmount ?? 0),
+          0,
+        );
+        remaining = Math.max(0, remaining - totalFixed);
+        fixedAllocations.forEach((allocation) => {
+          splits.push({
+            allocationId: allocation.id,
+            name: allocation.name,
+            amount: allocation.fixedAmount ?? 0,
+          });
+          const usd = convertToUsd(
+            draft,
+            allocation.fixedAmount ?? 0,
+            input.currency,
+            rate,
+          );
+          draft.balances[allocation.name] =
+            (draft.balances[allocation.name] ?? 0) + usd;
+        });
+        const totalPercent = percentAllocations.reduce(
+          (acc, allocation) => acc + (allocation.percentage ?? 0),
+          0,
+        );
+        percentAllocations.forEach((allocation) => {
+          const ratio = (allocation.percentage ?? 0) / (totalPercent || 1);
+          const share = remaining * ratio;
+          splits.push({
+            allocationId: allocation.id,
+            name: allocation.name,
+            amount: share,
+          });
+          const usd = convertToUsd(draft, share, input.currency, rate);
+          draft.balances[allocation.name] =
+            (draft.balances[allocation.name] ?? 0) + usd;
+        });
+        const paymentWithSplits: Payment = {
+          ...created,
+          pettyContribution: pettyApplied,
+          splits,
+          exchangeRate: rate,
+        };
+        created = paymentWithSplits;
+        draft.payments.push(paymentWithSplits);
+        const totalPaid = draft.payments
+          .filter((payment) => payment.invoiceId === invoice.id)
+          .reduce((acc, payment) => acc + payment.amount, 0);
+        if (totalPaid >= invoice.total) {
+          invoice.status = "paid";
+        } else if (totalPaid > 0) {
+          invoice.status = "partial";
+        }
+        return draft;
+      });
+
+      return created;
+    },
+    [mutate],
+  );
+
+  const addExpense = useCallback(
+    (input: Omit<Expense, "id">) => {
+      mutate((draft) => {
+        draft.expenses.push({ ...input, id: crypto.randomUUID() });
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const toggleExpenseApproval = useCallback(
+    (id: string) => {
+      mutate((draft) => {
+        const expense = draft.expenses.find((item) => item.id === id);
+        if (expense) {
+          expense.approved = !expense.approved;
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const addAdjustment = useCallback(
+    (input: Omit<Adjustment, "id">) => {
+      mutate((draft) => {
+        draft.adjustments.push({ ...input, id: crypto.randomUUID() });
+        const usd = convertToUsd(draft, input.amount, input.currency);
+        draft.balances[input.from] = (draft.balances[input.from] ?? 0) - usd;
+        draft.balances[input.to] = (draft.balances[input.to] ?? 0) + usd;
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updatePettyCashRule = useCallback(
+    (rule: Pick<PettyCashRule, "ruleType" | "value">) => {
+      mutate((draft) => {
+        draft.pettyCash.ruleType = rule.ruleType;
+        draft.pettyCash.value = rule.value;
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const addExchangeRate = useCallback(
+    (input: Omit<ExchangeRate, "id">) => {
+      mutate((draft) => {
+        draft.exchangeRates.push({ ...input, id: crypto.randomUUID() });
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updateIntegrations = useCallback(
+    (key: keyof IntegrationSettings, input: Partial<IntegrationSettings[typeof key]>) => {
+      mutate((draft) => {
+        draft.integrations[key] = {
+          ...draft.integrations[key],
+          ...input,
+        } as IntegrationSettings[typeof key];
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updateAppTemplate = useCallback(
+    (input: Partial<AppTemplateSettings>) => {
+      mutate((draft) => {
+        draft.appTemplate = {
+          ...draft.appTemplate,
+          ...input,
+        };
+        return draft;
+      });
+    },
+    [mutate],
+  );
 
   const resetAppTemplate = useCallback(() => {
     mutate((draft) => {
@@ -916,6 +1170,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return draft;
     });
   }, [mutate]);
+
+  const updateInvoiceNumbering = useCallback(
+    (input: { prefix?: string; nextSequence?: number; padding?: number }) => {
+      mutate((draft) => {
+        if (typeof input.prefix === "string") {
+          draft.invoicePrefix = input.prefix.trim();
+        }
+        if (
+          typeof input.nextSequence === "number" &&
+          Number.isFinite(input.nextSequence) &&
+          input.nextSequence > 0
+        ) {
+          draft.nextInvoiceSequence = Math.floor(input.nextSequence);
+        }
+        if (
+          typeof input.padding === "number" &&
+          Number.isFinite(input.padding) &&
+          input.padding > 0 &&
+          input.padding <= 10
+        ) {
+          draft.invoiceNumberPadding = Math.floor(input.padding);
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updateDefaultBankDetails = useCallback(
+    (details: string) => {
+      mutate((draft) => {
+        draft.defaultBankDetails = details.trim();
+        return draft;
+      });
+    },
+    [mutate],
+  );
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -925,205 +1216,258 @@ export function DataProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--brand-font-family", state.appTemplate.fontFamily);
   }, [state.appTemplate.fontFamily, state.appTemplate.primaryColor, state.appTemplate.secondaryColor]);
 
-  const importFromCsv = useCallback((rows: CsvRow[]) => {
-    let imported = 0;
-    mutate((draft) => {
-      rows.forEach((row) => {
-        const type = row.type?.toLowerCase();
-        if (!type) return;
-        switch (type) {
-          case "client": {
-            draft.clients.push({
-              id: crypto.randomUUID(),
-              name: row.name ?? "Cliente sin nombre",
-              contactEmail: row.contactEmail ?? "",
-              currency: (row.currency as Currency) ?? "USD",
-              notes: row.notes ?? "",
-            });
-            imported += 1;
-            break;
-          }
-          case "project": {
-            const client = draft.clients.find(
-              (client) => client.name.toLowerCase() === (row.client ?? "").toLowerCase(),
-            );
-            if (!client) break;
-            draft.projects.push({
-              id: crypto.randomUUID(),
-              clientId: client.id,
-              name: row.name ?? "Proyecto sin nombre",
-              description: row.description ?? "",
-              status: (row.status as ProjectStatus) ?? "planning",
-              startDate: row.startDate ?? new Date().toISOString().slice(0, 10),
-              endDate: row.endDate ?? "",
-              budget: Number(row.budget ?? 0),
-              currency: (row.currency as Currency) ?? client.currency,
-              allocations: [
-                { id: crypto.randomUUID(), name: "Milo", role: "milo", percentage: 40 },
-                { id: crypto.randomUUID(), name: "Sergio", role: "sergio", percentage: 35 },
-                { id: crypto.randomUUID(), name: "Camila", role: "collaborator", percentage: 25 },
-              ],
-            });
-            imported += 1;
-            break;
-          }
-          case "invoice": {
-            const project = draft.projects.find(
-              (project) => project.name.toLowerCase() === (row.project ?? "").toLowerCase(),
-            );
-            if (!project) break;
-            const invoiceId = crypto.randomUUID();
-            const number = `MONTE-${String(draft.nextInvoiceSequence).padStart(4, "0")}`;
-            draft.nextInvoiceSequence += 1;
-            draft.invoices.push({
-              id: invoiceId,
-              projectId: project.id,
-              number,
-              issueDate: row.issueDate ?? new Date().toISOString().slice(0, 10),
-              dueDate:
-                row.dueDate ??
-                new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString().slice(0, 10),
-              subtotal: Number(row.subtotal ?? 0),
-              taxes: Number(row.taxes ?? 0),
-              total: Number(row.total ?? 0),
-              currency: (row.currency as Currency) ?? project.currency,
-              status: (row.status as InvoiceStatus) ?? "draft",
-              notes: row.notes ?? "",
-              lineItems: [
-                {
-                  id: crypto.randomUUID(),
-                  description: row.description ?? "Concepto importado",
-                  amount: Number(row.subtotal ?? row.total ?? 0),
+  const importFromCsv = useCallback(
+    (rows: CsvRow[]) => {
+      let imported = 0;
+      mutate((draft) => {
+        rows.forEach((row) => {
+          const type = row.type?.toLowerCase();
+          if (!type) return;
+          switch (type) {
+            case "client": {
+              draft.clients.push({
+                id: crypto.randomUUID(),
+                name: row.name ?? "Cliente sin nombre",
+                contactEmail: row.contactEmail ?? "",
+                currency: (row.currency as Currency) ?? "USD",
+                notes: row.notes ?? "",
+              });
+              imported += 1;
+              break;
+            }
+            case "project": {
+              const client = draft.clients.find(
+                (client) =>
+                  client.name.toLowerCase() ===
+                  (row.client ?? "").toLowerCase(),
+              );
+              if (!client) break;
+              draft.projects.push({
+                id: crypto.randomUUID(),
+                clientId: client.id,
+                name: row.name ?? "Proyecto sin nombre",
+                brand: (row.brand as string) ?? client.name,
+                description: row.description ?? "",
+                status: (row.status as ProjectStatus) ?? "planning",
+                startDate: row.startDate ?? new Date().toISOString().slice(0, 10),
+                endDate: row.endDate ?? "",
+                budget: Number(row.budget ?? 0),
+                currency: (row.currency as Currency) ?? client.currency,
+                allocations: [
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Milo",
+                    role: "milo",
+                    percentage: 40,
+                  },
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Sergio",
+                    role: "sergio",
+                    percentage: 35,
+                  },
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Camila",
+                    role: "collaborator",
+                    percentage: 25,
+                  },
+                ],
+              });
+              imported += 1;
+              break;
+            }
+            case "invoice": {
+              const project = draft.projects.find(
+                (project) =>
+                  project.name.toLowerCase() ===
+                  (row.project ?? "").toLowerCase(),
+              );
+              if (!project) break;
+              const invoiceId = crypto.randomUUID();
+              const number = formatInvoiceNumber(
+                draft.invoicePrefix,
+                draft.nextInvoiceSequence,
+                draft.invoiceNumberPadding,
+              );
+              draft.nextInvoiceSequence += 1;
+              draft.invoices.push({
+                id: invoiceId,
+                projectId: project.id,
+                number,
+                issueDate: row.issueDate ?? new Date().toISOString().slice(0, 10),
+                dueDate:
+                  row.dueDate ??
+                  new Date(Date.now() + 1000 * 60 * 60 * 24 * 30)
+                    .toISOString()
+                    .slice(0, 10),
+                subtotal: Number(row.subtotal ?? 0),
+                taxes: Number(row.taxes ?? 0),
+                total: Number(row.total ?? 0),
+                currency: (row.currency as Currency) ?? project.currency,
+                status: (row.status as InvoiceStatus) ?? "draft",
+                notes: row.notes ?? "",
+                lineItems: [
+                  {
+                    id: crypto.randomUUID(),
+                    description: row.description ?? "Concepto importado",
+                    amount: Number(row.subtotal ?? row.total ?? 0),
+                  },
+                ],
+                branding: {
+                  accentColor: (row.accentColor as string) ?? "#10b981",
+                  headerText: row.headerText ?? "Factura Monte Animation",
+                  footerText:
+                    row.footerText ??
+                    "Factura importada desde histórico. Verificar datos antes de enviar.",
+                  logoDataUrl: typeof row.logoDataUrl === "string" ? row.logoDataUrl : undefined,
                 },
-              ],
-              branding: {
-                accentColor: (row.accentColor as string) ?? "#10b981",
-                headerText: row.headerText ?? "Factura Monte Animation",
-                footerText:
-                  row.footerText ??
-                  "Factura importada desde histórico. Verificar datos antes de enviar.",
-                logoDataUrl: typeof row.logoDataUrl === "string" ? row.logoDataUrl : undefined,
-              },
-              verificationUrl:
-                (row.verificationUrl as string) ??
-                `https://billing.monteanimation.com/verify/${invoiceId}`,
-            });
-            imported += 1;
-            break;
+                verificationUrl:
+                  (row.verificationUrl as string) ??
+                  resolveVerificationUrl(number || invoiceId),
+                bankDetails:
+                  (row.bankDetails as string) ?? draft.defaultBankDetails,
+              });
+              imported += 1;
+              break;
+            }
+            case "payment": {
+              const invoice = draft.invoices.find(
+                (invoice) =>
+                  invoice.number.toLowerCase() ===
+                  (row.invoice ?? "").toLowerCase(),
+              );
+              if (!invoice) break;
+              const project = draft.projects.find(
+                (project) => project.id === invoice.projectId,
+              );
+              if (!project) break;
+              const amount = Number(row.amount ?? 0);
+              const currency = (row.currency as Currency) ?? invoice.currency;
+              const rate = Number(row.exchangeRate ?? latestRate(draft, currency));
+              const petty = draft.pettyCash.ruleType === "percent"
+                ? (amount * draft.pettyCash.value) / 100
+                : draft.pettyCash.value;
+              const pettyApplied = Math.min(petty, amount);
+              draft.pettyCash.balance += convertToUsd(
+                draft,
+                pettyApplied,
+                currency,
+                rate,
+              );
+              draft.balances["Fondo Monte"] = draft.pettyCash.balance;
+              const net = amount - pettyApplied;
+              const fixedAllocations = project.allocations.filter(
+                (allocation) => allocation.fixedAmount,
+              );
+              const percentAllocations = project.allocations.filter(
+                (allocation) => allocation.percentage,
+              );
+              const totalFixed = fixedAllocations.reduce(
+                (acc, allocation) => acc + (allocation.fixedAmount ?? 0),
+                0,
+              );
+              const remaining = Math.max(0, net - totalFixed);
+              const splits: Payment["splits"] = [];
+              fixedAllocations.forEach((allocation) => {
+                const share = allocation.fixedAmount ?? 0;
+                splits.push({
+                  allocationId: allocation.id,
+                  name: allocation.name,
+                  amount: share,
+                });
+                const usd = convertToUsd(draft, share, currency, rate);
+                draft.balances[allocation.name] =
+                  (draft.balances[allocation.name] ?? 0) + usd;
+              });
+              const totalPercent = percentAllocations.reduce(
+                (acc, allocation) => acc + (allocation.percentage ?? 0),
+                0,
+              );
+              percentAllocations.forEach((allocation) => {
+                const ratio = (allocation.percentage ?? 0) / (totalPercent || 1);
+                const share = remaining * ratio;
+                splits.push({
+                  allocationId: allocation.id,
+                  name: allocation.name,
+                  amount: share,
+                });
+                const usd = convertToUsd(draft, share, currency, rate);
+                draft.balances[allocation.name] =
+                  (draft.balances[allocation.name] ?? 0) + usd;
+              });
+              draft.payments.push({
+                id: crypto.randomUUID(),
+                invoiceId: invoice.id,
+                projectId: project.id,
+                date: row.date ?? new Date().toISOString().slice(0, 10),
+                amount,
+                currency,
+                method: row.method ?? "transfer",
+                exchangeRate: rate,
+                createdBy: row.createdBy ?? "Import",
+                appliedTo: invoice.number,
+                pettyContribution: pettyApplied,
+                splits,
+              });
+              const totalPaid = draft.payments
+                .filter((payment) => payment.invoiceId === invoice.id)
+                .reduce((acc, payment) => acc + payment.amount, 0);
+              if (totalPaid >= invoice.total) {
+                invoice.status = "paid";
+              } else if (totalPaid > 0) {
+                invoice.status = "partial";
+              }
+              imported += 1;
+              break;
+            }
+            case "expense": {
+              const project = draft.projects.find(
+                (project) =>
+                  project.name.toLowerCase() ===
+                  (row.project ?? "").toLowerCase(),
+              );
+              draft.expenses.push({
+                id: crypto.randomUUID(),
+                projectId: project?.id,
+                userId: row.userId ?? "",
+                description: row.description ?? "Gasto",
+                category: row.category ?? "General",
+                amount: Number(row.amount ?? 0),
+                currency: (row.currency as Currency) ?? project?.currency ?? "USD",
+                approved: row.approved === "true" || row.approved === "1",
+                date: row.date ?? new Date().toISOString().slice(0, 10),
+              });
+              imported += 1;
+              break;
+            }
+            case "adjustment": {
+              draft.adjustments.push({
+                id: crypto.randomUUID(),
+                from: row.from ?? "Cuenta A",
+                to: row.to ?? "Cuenta B",
+                amount: Number(row.amount ?? 0),
+                currency: (row.currency as Currency) ?? "USD",
+                category: row.category ?? "Ajuste",
+                note: row.note ?? row.comments ?? "",
+                date: row.date ?? new Date().toISOString().slice(0, 10),
+              });
+              imported += 1;
+              break;
+            }
+            default:
+              break;
           }
-          case "payment": {
-            const invoice = draft.invoices.find(
-              (invoice) => invoice.number.toLowerCase() === (row.invoice ?? "").toLowerCase(),
-            );
-            if (!invoice) break;
-            const project = draft.projects.find((project) => project.id === invoice.projectId);
-            if (!project) break;
-
-            const amount = Number(row.amount ?? 0);
-            const currency = (row.currency as Currency) ?? invoice.currency;
-            const rate = Number(row.exchangeRate ?? latestRate(draft, currency));
-
-            const petty = draft.pettyCash.ruleType === "percent"
-              ? (amount * draft.pettyCash.value) / 100
-              : draft.pettyCash.value;
-
-            const pettyApplied = Math.min(petty, amount);
-            draft.pettyCash.balance += convertToUsd(draft, pettyApplied, currency, rate);
-            draft.balances["Fondo Monte"] = draft.pettyCash.balance;
-
-            const net = amount - pettyApplied;
-            const fixedAllocations = project.allocations.filter((a) => a.fixedAmount);
-            const percentAllocations = project.allocations.filter((a) => a.percentage);
-
-            const totalFixed = fixedAllocations.reduce(
-              (acc, a) => acc + (a.fixedAmount ?? 0), 0
-            );
-            const remaining = Math.max(0, net - totalFixed);
-            const splits: Payment["splits"] = [];
-
-            fixedAllocations.forEach((a) => {
-              const share = a.fixedAmount ?? 0;
-              splits.push({ allocationId: a.id, name: a.name, amount: share });
-              const usd = convertToUsd(draft, share, currency, rate);
-              draft.balances[a.name] = (draft.balances[a.name] ?? 0) + usd;
-            });
-
-            const totalPercent = percentAllocations.reduce(
-              (acc, a) => acc + (a.percentage ?? 0), 0
-            );
-            percentAllocations.forEach((a) => {
-              const ratio = (a.percentage ?? 0) / (totalPercent || 1);
-              const share = remaining * ratio;
-              splits.push({ allocationId: a.id, name: a.name, amount: share });
-              const usd = convertToUsd(draft, share, currency, rate);
-              draft.balances[a.name] = (draft.balances[a.name] ?? 0) + usd;
-            });
-
-            draft.payments.push({
-              id: crypto.randomUUID(),
-              invoiceId: invoice.id,
-              projectId: project.id,
-              date: row.date ?? new Date().toISOString().slice(0, 10),
-              amount,
-              currency,
-              method: row.method ?? "transfer",
-              exchangeRate: rate,
-              createdBy: row.createdBy ?? "Import",
-              appliedTo: invoice.number,
-              pettyContribution: pettyApplied,
-              splits,
-            });
-
-            const totalPaid = draft.payments
-              .filter((p) => p.invoiceId === invoice.id)
-              .reduce((acc, p) => acc + p.amount, 0);
-
-            if (totalPaid >= invoice.total) invoice.status = "paid";
-            else if (totalPaid > 0) invoice.status = "partial";
-
-            imported += 1;
-            break;
-          }
-          case "expense": {
-            const project = draft.projects.find(
-              (project) => project.name.toLowerCase() === (row.project ?? "").toLowerCase(),
-            );
-            draft.expenses.push({
-              id: crypto.randomUUID(),
-              projectId: project?.id,
-              userId: row.userId ?? "",
-              description: row.description ?? "Gasto",
-              category: row.category ?? "General",
-              amount: Number(row.amount ?? 0),
-              currency: (row.currency as Currency) ?? project?.currency ?? "USD",
-              approved: row.approved === "true" || row.approved === "1",
-              date: row.date ?? new Date().toISOString().slice(0, 10),
-            });
-            imported += 1;
-            break;
-          }
-          case "adjustment": {
-            draft.adjustments.push({
-              id: crypto.randomUUID(),
-              from: row.from ?? "Cuenta A",
-              to: row.to ?? "Cuenta B",
-              amount: Number(row.amount ?? 0),
-              currency: (row.currency as Currency) ?? "USD",
-              category: row.category ?? "Ajuste",
-              note: row.note ?? row.comments ?? "",
-              date: row.date ?? new Date().toISOString().slice(0, 10),
-            });
-            imported += 1;
-            break;
-          }
-          default:
-            break;
-        }
+        });
+        return draft;
       });
-      return draft;
-    });
-    return { summary: `Importadas ${imported} filas`, imported };
-  }, [mutate]);
+      return {
+        summary: `Importadas ${imported} filas`,
+        imported,
+      };
+    },
+    [mutate],
+  );
 
   const value = useMemo(
     () => ({
@@ -1135,6 +1479,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateProject,
       deleteProject,
       createInvoice,
+      updateInvoice,
       updateInvoiceStatus,
       recordPayment,
       addExpense,
@@ -1146,6 +1491,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateIntegrations,
       updateAppTemplate,
       resetAppTemplate,
+      updateInvoiceNumbering,
+      updateDefaultBankDetails,
     }),
     [
       state,
@@ -1156,6 +1503,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateProject,
       deleteProject,
       createInvoice,
+      updateInvoice,
       updateInvoiceStatus,
       recordPayment,
       addExpense,
@@ -1167,6 +1515,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateIntegrations,
       updateAppTemplate,
       resetAppTemplate,
+      updateInvoiceNumbering,
+      updateDefaultBankDetails,
     ],
   );
 

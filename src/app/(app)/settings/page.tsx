@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/context/auth-context";
 import { useData } from "@/context/data-context";
@@ -17,14 +17,41 @@ export default function SettingsPage() {
     appTemplate,
     updateAppTemplate,
     resetAppTemplate,
+    invoicePrefix,
+    invoiceNumberPadding,
+    nextInvoiceSequence,
+    defaultBankDetails,
+    updateInvoiceNumbering,
+    updateDefaultBankDetails,
   } = useData();
-
-  // ✅ Estrechamos el tipo de email solo cuando está habilitado
-  const email = integrations.email.enabled ? integrations.email : undefined;
-
   const [ruleType, setRuleType] = useState<"percent" | "fixed">(pettyCash.ruleType);
   const [ruleValue, setRuleValue] = useState<number>(pettyCash.value);
   const [passwordHints, setPasswordHints] = useState<Record<string, string>>({});
+  const [prefixDraft, setPrefixDraft] = useState(invoicePrefix);
+  const [paddingDraft, setPaddingDraft] = useState(invoiceNumberPadding);
+  const [sequenceDraft, setSequenceDraft] = useState(nextInvoiceSequence);
+  const [bankDetailsDraft, setBankDetailsDraft] = useState(defaultBankDetails);
+
+  useEffect(() => {
+    setPrefixDraft(invoicePrefix);
+  }, [invoicePrefix]);
+
+  useEffect(() => {
+    setPaddingDraft(invoiceNumberPadding);
+  }, [invoiceNumberPadding]);
+
+  useEffect(() => {
+    setSequenceDraft(nextInvoiceSequence);
+  }, [nextInvoiceSequence]);
+
+  useEffect(() => {
+    setBankDetailsDraft(defaultBankDetails);
+  }, [defaultBankDetails]);
+
+  const exampleNumber = `${prefixDraft}${String(sequenceDraft).padStart(
+    Math.max(1, paddingDraft || 4),
+    "0",
+  )}`;
 
   if (!user || (user.role !== "owner" && user.role !== "admin")) {
     return (
@@ -42,6 +69,16 @@ export default function SettingsPage() {
     updatePettyCashRule({ ruleType, value: ruleValue });
   };
 
+  const handleNumberingSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    updateInvoiceNumbering({
+      prefix: prefixDraft,
+      nextSequence: sequenceDraft,
+      padding: paddingDraft,
+    });
+    updateDefaultBankDetails(bankDetailsDraft);
+  };
+
   const handleRateSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -57,8 +94,7 @@ export default function SettingsPage() {
     updateIntegrations(key, { enabled: event.target.checked });
   };
 
-  const handleTemplateColorChange =
-    (field: "primaryColor" | "secondaryColor") =>
+  const handleTemplateColorChange = (field: "primaryColor" | "secondaryColor") =>
     (event: ChangeEvent<HTMLInputElement>) => {
       updateAppTemplate({ [field]: event.target.value });
     };
@@ -143,6 +179,67 @@ export default function SettingsPage() {
             className="md:col-span-2 rounded-full bg-emerald-500 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-400"
           >
             Guardar regla de caja chica
+          </button>
+        </form>
+      </section>
+
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Numeración de facturas y datos bancarios</h2>
+        <p className="text-sm text-[color:var(--text-secondary)]">
+          Controla el prefijo, la cantidad de dígitos y el correlativo siguiente para mantener la secuencia oficial. También puedes definir los datos bancarios que aparecerán en todos los PDFs generados.
+        </p>
+
+        <form onSubmit={handleNumberingSubmit} className="mt-6 grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Prefijo de factura
+            <input
+              value={prefixDraft}
+              onChange={(event) => setPrefixDraft(event.target.value)}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Dígitos de relleno
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={paddingDraft}
+              onChange={(event) => setPaddingDraft(Number(event.target.value) || 1)}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Próximo correlativo
+            <input
+              type="number"
+              min={1}
+              value={sequenceDraft}
+              onChange={(event) => setSequenceDraft(Number(event.target.value) || 1)}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+            />
+          </label>
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+            <p className="text-xs uppercase tracking-[0.2em]">Vista previa</p>
+            <p className="mt-2 font-mono text-lg text-[color:var(--text-primary)]">{exampleNumber}</p>
+            <p className="mt-1 text-xs">Se actualizará para todas las facturas nuevas.</p>
+          </div>
+          <label className="md:col-span-2 grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Datos bancarios por defecto
+            <textarea
+              value={bankDetailsDraft}
+              onChange={(event) => setBankDetailsDraft(event.target.value)}
+              rows={4}
+              placeholder="Banco, cuenta, CBU/ABA, titular"
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+            />
+            <small className="text-xs">Se incluirán en el bloque de pagos y en el PDF generado.</small>
+          </label>
+          <button
+            type="submit"
+            className="md:col-span-2 rounded-full bg-emerald-500 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-400"
+          >
+            Guardar numeración y datos bancarios
           </button>
         </form>
       </section>
@@ -268,9 +365,7 @@ export default function SettingsPage() {
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <small className="text-xs text-[color:var(--text-secondary)]">
-              Última sincronización: {integrations.googleOAuth.lastSynced ?? "nunca"}
-            </small>
+            <small className="text-xs text-[color:var(--text-secondary)]">Última sincronización: {integrations.googleOAuth.lastSynced ?? "nunca"}</small>
           </IntegrationCard>
 
           <IntegrationCard
@@ -295,9 +390,7 @@ export default function SettingsPage() {
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <small className="text-xs text-[color:var(--text-secondary)]">
-              Última notificación: {integrations.slack.lastNotification ?? "nunca"}
-            </small>
+            <small className="text-xs text-[color:var(--text-secondary)]">Última notificación: {integrations.slack.lastNotification ?? "nunca"}</small>
           </IntegrationCard>
 
           <IntegrationCard
@@ -322,9 +415,7 @@ export default function SettingsPage() {
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <small className="text-xs text-[color:var(--text-secondary)]">
-              Última exportación: {integrations.drive.lastExport ?? "nunca"}
-            </small>
+            <small className="text-xs text-[color:var(--text-secondary)]">Última exportación: {integrations.drive.lastExport ?? "nunca"}</small>
           </IntegrationCard>
 
           <IntegrationCard
@@ -333,49 +424,32 @@ export default function SettingsPage() {
             enabled={integrations.email.enabled}
             onToggle={handleIntegrationToggle("email")}
           >
-            {/* Proveedor */}
             <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
               Proveedor
               <select
-                value={email?.provider ?? ""}
-                onChange={(event) => {
-                  if (!integrations.email.enabled) return;
-                  updateIntegrations("email", { provider: event.target.value as "resend" | "smtp" });
-                }}
+                value={integrations.email.provider}
+                onChange={(event) => updateIntegrations("email", { provider: event.target.value as "resend" | "smtp" })}
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                disabled={!integrations.email.enabled}
               >
                 <option value="resend">Resend</option>
                 <option value="smtp">SMTP propio</option>
               </select>
             </label>
-
-            {/* From */}
             <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
               Correo remitente
               <input
-                value={email?.fromEmail ?? ""}
-                onChange={(event) => {
-                  if (!integrations.email.enabled) return;
-                  updateIntegrations("email", { fromEmail: event.target.value });
-                }}
+                value={integrations.email.fromEmail}
+                onChange={(event) => updateIntegrations("email", { fromEmail: event.target.value })}
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                disabled={!integrations.email.enabled}
               />
             </label>
-
-            {/* Config condicional por proveedor */}
-            {(email?.provider ?? "") === "resend" ? (
+            {integrations.email.provider === "resend" ? (
               <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                 API key
                 <input
-                  value={email?.apiKey ?? ""}
-                  onChange={(event) => {
-                    if (!integrations.email.enabled) return;
-                    updateIntegrations("email", { apiKey: event.target.value });
-                  }}
+                  value={integrations.email.apiKey ?? ""}
+                  onChange={(event) => updateIntegrations("email", { apiKey: event.target.value })}
                   className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                  disabled={!integrations.email.enabled}
                 />
               </label>
             ) : (
@@ -383,26 +457,18 @@ export default function SettingsPage() {
                 <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                   Host SMTP
                   <input
-                    value={email?.smtpHost ?? ""}
-                    onChange={(event) => {
-                      if (!integrations.email.enabled) return;
-                      updateIntegrations("email", { smtpHost: event.target.value });
-                    }}
+                    value={integrations.email.smtpHost ?? ""}
+                    onChange={(event) => updateIntegrations("email", { smtpHost: event.target.value })}
                     className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                    disabled={!integrations.email.enabled}
                   />
                 </label>
                 <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                   Puerto
                   <input
                     type="number"
-                    value={email?.smtpPort ?? 0}
-                    onChange={(event) => {
-                      if (!integrations.email.enabled) return;
-                      updateIntegrations("email", { smtpPort: Number(event.target.value) });
-                    }}
+                    value={integrations.email.smtpPort ?? 0}
+                    onChange={(event) => updateIntegrations("email", { smtpPort: Number(event.target.value) })}
                     className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                    disabled={!integrations.email.enabled}
                   />
                 </label>
               </div>
