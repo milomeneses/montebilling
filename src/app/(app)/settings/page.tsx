@@ -19,7 +19,7 @@ export default function SettingsPage() {
     resetAppTemplate,
   } = useData();
 
-  // 👇 helper para estrechar el tipo del email (evita errores TS)
+  // ✅ Estrechamos el tipo de email solo cuando está habilitado
   const email = integrations.email.enabled ? integrations.email : undefined;
 
   const [ruleType, setRuleType] = useState<"percent" | "fixed">(pettyCash.ruleType);
@@ -333,12 +333,13 @@ export default function SettingsPage() {
             enabled={integrations.email.enabled}
             onToggle={handleIntegrationToggle("email")}
           >
+            {/* Proveedor */}
             <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
               Proveedor
               <select
                 value={email?.provider ?? ""}
                 onChange={(event) => {
-                  if (!email) return;
+                  if (!integrations.email.enabled) return;
                   updateIntegrations("email", { provider: event.target.value as "resend" | "smtp" });
                 }}
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
@@ -349,12 +350,13 @@ export default function SettingsPage() {
               </select>
             </label>
 
+            {/* From */}
             <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
               Correo remitente
               <input
                 value={email?.fromEmail ?? ""}
                 onChange={(event) => {
-                  if (!email) return;
+                  if (!integrations.email.enabled) return;
                   updateIntegrations("email", { fromEmail: event.target.value });
                 }}
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
@@ -362,13 +364,14 @@ export default function SettingsPage() {
               />
             </label>
 
+            {/* Config condicional por proveedor */}
             {(email?.provider ?? "") === "resend" ? (
               <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                 API key
                 <input
                   value={email?.apiKey ?? ""}
                   onChange={(event) => {
-                    if (!email) return;
+                    if (!integrations.email.enabled) return;
                     updateIntegrations("email", { apiKey: event.target.value });
                   }}
                   className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
@@ -382,7 +385,7 @@ export default function SettingsPage() {
                   <input
                     value={email?.smtpHost ?? ""}
                     onChange={(event) => {
-                      if (!email) return;
+                      if (!integrations.email.enabled) return;
                       updateIntegrations("email", { smtpHost: event.target.value });
                     }}
                     className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
@@ -395,7 +398,7 @@ export default function SettingsPage() {
                     type="number"
                     value={email?.smtpPort ?? 0}
                     onChange={(event) => {
-                      if (!email) return;
+                      if (!integrations.email.enabled) return;
                       updateIntegrations("email", { smtpPort: Number(event.target.value) });
                     }}
                     className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
