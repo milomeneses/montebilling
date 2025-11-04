@@ -18,6 +18,10 @@ export default function SettingsPage() {
     updateAppTemplate,
     resetAppTemplate,
   } = useData();
+
+  // 👇 helper para estrechar el tipo del email (evita errores TS)
+  const email = integrations.email.enabled ? integrations.email : undefined;
+
   const [ruleType, setRuleType] = useState<"percent" | "fixed">(pettyCash.ruleType);
   const [ruleValue, setRuleValue] = useState<number>(pettyCash.value);
   const [passwordHints, setPasswordHints] = useState<Record<string, string>>({});
@@ -53,7 +57,8 @@ export default function SettingsPage() {
     updateIntegrations(key, { enabled: event.target.checked });
   };
 
-  const handleTemplateColorChange = (field: "primaryColor" | "secondaryColor") =>
+  const handleTemplateColorChange =
+    (field: "primaryColor" | "secondaryColor") =>
     (event: ChangeEvent<HTMLInputElement>) => {
       updateAppTemplate({ [field]: event.target.value });
     };
@@ -263,7 +268,9 @@ export default function SettingsPage() {
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <small className="text-xs text-[color:var(--text-secondary)]">Última sincronización: {integrations.googleOAuth.lastSynced ?? "nunca"}</small>
+            <small className="text-xs text-[color:var(--text-secondary)]">
+              Última sincronización: {integrations.googleOAuth.lastSynced ?? "nunca"}
+            </small>
           </IntegrationCard>
 
           <IntegrationCard
@@ -288,7 +295,9 @@ export default function SettingsPage() {
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <small className="text-xs text-[color:var(--text-secondary)]">Última notificación: {integrations.slack.lastNotification ?? "nunca"}</small>
+            <small className="text-xs text-[color:var(--text-secondary)]">
+              Última notificación: {integrations.slack.lastNotification ?? "nunca"}
+            </small>
           </IntegrationCard>
 
           <IntegrationCard
@@ -313,7 +322,9 @@ export default function SettingsPage() {
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <small className="text-xs text-[color:var(--text-secondary)]">Última exportación: {integrations.drive.lastExport ?? "nunca"}</small>
+            <small className="text-xs text-[color:var(--text-secondary)]">
+              Última exportación: {integrations.drive.lastExport ?? "nunca"}
+            </small>
           </IntegrationCard>
 
           <IntegrationCard
@@ -325,29 +336,43 @@ export default function SettingsPage() {
             <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
               Proveedor
               <select
-                value={integrations.email.provider}
-                onChange={(event) => updateIntegrations("email", { provider: event.target.value as "resend" | "smtp" })}
+                value={email?.provider ?? ""}
+                onChange={(event) => {
+                  if (!email) return;
+                  updateIntegrations("email", { provider: event.target.value as "resend" | "smtp" });
+                }}
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                disabled={!integrations.email.enabled}
               >
                 <option value="resend">Resend</option>
                 <option value="smtp">SMTP propio</option>
               </select>
             </label>
+
             <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
               Correo remitente
               <input
-                value={integrations.email.fromEmail}
-                onChange={(event) => updateIntegrations("email", { fromEmail: event.target.value })}
+                value={email?.fromEmail ?? ""}
+                onChange={(event) => {
+                  if (!email) return;
+                  updateIntegrations("email", { fromEmail: event.target.value });
+                }}
                 className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                disabled={!integrations.email.enabled}
               />
             </label>
-            {integrations.email.provider === "resend" ? (
+
+            {(email?.provider ?? "") === "resend" ? (
               <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                 API key
                 <input
-                  value={integrations.email.apiKey ?? ""}
-                  onChange={(event) => updateIntegrations("email", { apiKey: event.target.value })}
+                  value={email?.apiKey ?? ""}
+                  onChange={(event) => {
+                    if (!email) return;
+                    updateIntegrations("email", { apiKey: event.target.value });
+                  }}
                   className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                  disabled={!integrations.email.enabled}
                 />
               </label>
             ) : (
@@ -355,18 +380,26 @@ export default function SettingsPage() {
                 <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                   Host SMTP
                   <input
-                    value={integrations.email.smtpHost ?? ""}
-                    onChange={(event) => updateIntegrations("email", { smtpHost: event.target.value })}
+                    value={email?.smtpHost ?? ""}
+                    onChange={(event) => {
+                      if (!email) return;
+                      updateIntegrations("email", { smtpHost: event.target.value });
+                    }}
                     className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                    disabled={!integrations.email.enabled}
                   />
                 </label>
                 <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
                   Puerto
                   <input
                     type="number"
-                    value={integrations.email.smtpPort ?? 0}
-                    onChange={(event) => updateIntegrations("email", { smtpPort: Number(event.target.value) })}
+                    value={email?.smtpPort ?? 0}
+                    onChange={(event) => {
+                      if (!email) return;
+                      updateIntegrations("email", { smtpPort: Number(event.target.value) });
+                    }}
                     className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                    disabled={!integrations.email.enabled}
                   />
                 </label>
               </div>
