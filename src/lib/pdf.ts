@@ -45,7 +45,14 @@ async function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
   ctx.lineTo(x + width - radius, y);
@@ -322,6 +329,11 @@ function buildPdfFromImage(imageDataUrl: string, canvasWidth: number, canvasHeig
   ]);
 }
 
+// ✅ helper para convertir Uint8Array (posible ArrayBufferLike) en ArrayBuffer real
+function u8ToArrayBuffer(u8: Uint8Array): ArrayBuffer {
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
+}
+
 export async function buildInvoicePreviewImage(payload: InvoicePdfPayload) {
   const canvas = await renderInvoiceCanvas(payload);
   return canvas.toDataURL("image/png");
@@ -331,5 +343,7 @@ export async function generateInvoicePdf(payload: InvoicePdfPayload): Promise<Bl
   const canvas = await renderInvoiceCanvas(payload);
   const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
   const pdfBytes = buildPdfFromImage(dataUrl, canvas.width, canvas.height);
-  return new Blob([pdfBytes], { type: "application/pdf" });
+  // ✅ usar ArrayBuffer real para que compile en DOM typings estrictos
+  const ab = u8ToArrayBuffer(pdfBytes);
+  return new Blob([ab], { type: "application/pdf" });
 }
