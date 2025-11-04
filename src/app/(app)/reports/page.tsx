@@ -27,6 +27,15 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/90 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--text-secondary)]">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-[color:var(--text-primary)]">{value}</p>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const {
@@ -126,86 +135,63 @@ export default function ReportsPage() {
 
   return (
     <div className="grid gap-8">
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Reportes y balances</h1>
-            <p className="text-sm text-slate-300">
+      <section className="surface">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="grid gap-2">
+            <h1 className="text-3xl font-semibold text-[color:var(--text-primary)]">Reportes y balances</h1>
+            <p className="text-sm text-[color:var(--text-secondary)] max-w-2xl">
               Visualiza AR Aging, márgenes por proyecto, balances personales y saldo del Fondo Monte.
             </p>
           </div>
           <button
             onClick={handleExport}
-            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-200 hover:border-emerald-400"
+            className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-[color:var(--text-secondary)] transition hover:border-emerald-400"
           >
             Exportar CSV
           </button>
         </div>
-
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Balance Milo</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-300">
-              USD {(balances["Milo"] ?? 0).toFixed(2)}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Balance Sergio</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-300">
-              USD {(balances["Sergio"] ?? 0).toFixed(2)}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Colaboradores</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-300">
-              USD {(balances["Colaboradores"] ?? 0).toFixed(2)}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Fondo Monte</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-300">
-              USD {pettyCash.balance.toFixed(2)}
-            </p>
-          </div>
+        <div className="surface-muted mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard label="Balance Milo" value={`USD ${(balances["Milo"] ?? 0).toFixed(2)}`} />
+          <SummaryCard label="Balance Sergio" value={`USD ${(balances["Sergio"] ?? 0).toFixed(2)}`} />
+          <SummaryCard label="Colaboradores" value={`USD ${(balances["Colaboradores"] ?? 0).toFixed(2)}`} />
+          <SummaryCard label="Fondo Monte" value={`USD ${pettyCash.balance.toFixed(2)}`} />
         </div>
       </section>
 
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-        <h2 className="text-lg font-semibold">AR Aging</h2>
-        <div className="grid gap-3 md:grid-cols-4">
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">AR Aging</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
           {Object.entries(arAging).map(([bucket, amount]) => (
             <div
               key={bucket}
-              className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 text-center"
             >
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{bucket} días</p>
-              <p className="mt-2 text-lg font-semibold text-amber-200">
-                {amount.toLocaleString()}
-              </p>
+              <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-secondary)]">{bucket} días</p>
+              <p className="mt-2 text-lg font-semibold text-amber-600">{amount.toLocaleString()}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-        <h2 className="text-lg font-semibold">Margen por proyecto</h2>
-        <div className="grid gap-4">
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Margen por proyecto</h2>
+        <div className="mt-4 grid gap-4">
           {margins.map(({ project, totalInvoiced, totalExpenses, margin }) => (
             <article
               key={project.id}
-              className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+              className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-100">{project.name}</h3>
-                  <p className="text-xs text-slate-400">
+                <div className="grid gap-1">
+                  <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">{project.name}</h3>
+                  <p className="text-xs text-[color:var(--text-secondary)]">
                     {project.currency} · Presupuesto {project.budget.toLocaleString()}
                   </p>
                 </div>
-                <div className="text-right text-xs text-slate-300">
+                <div className="text-right text-xs text-[color:var(--text-secondary)]">
                   <p>Facturado: {project.currency} {totalInvoiced.toLocaleString()}</p>
                   <p>Gastos: {project.currency} {totalExpenses.toLocaleString()}</p>
-                  <p className={margin >= 0 ? "text-emerald-300" : "text-rose-300"}>
+                  <p className={margin >= 0 ? "text-emerald-600" : "text-rose-600"}>
                     Margen: {project.currency} {margin.toLocaleString()}
                   </p>
                 </div>
@@ -215,19 +201,19 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-        <h2 className="text-lg font-semibold">Tipos de cambio registrados</h2>
-        <div className="grid gap-3 md:grid-cols-3">
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Tipos de cambio registrados</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           {exchangeRates.map((rate) => (
             <div
               key={rate.id}
-              className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4"
             >
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+              <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-secondary)]">
                 {rate.fromCurrency} → {rate.toCurrency}
               </p>
-              <p className="mt-2 text-lg font-semibold text-slate-200">{rate.rate}</p>
-              <p className="text-xs text-slate-500">{rate.date}</p>
+              <p className="mt-2 text-lg font-semibold text-[color:var(--text-primary)]">{rate.rate}</p>
+              <p className="text-xs text-[color:var(--text-secondary)]">{rate.date}</p>
             </div>
           ))}
         </div>

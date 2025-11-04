@@ -2,6 +2,7 @@
 
 import { AuthProvider } from "@/context/auth-context";
 import { DataProvider } from "@/context/data-context";
+import { ThemeProvider } from "@/context/theme-context";
 
 export default function AppProviders({
   children,
@@ -9,8 +10,10 @@ export default function AppProviders({
   children: React.ReactNode;
 }) {
   return (
-    <AuthProvider>
-      <DataProvider>{children}</DataProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <DataProvider>{children}</DataProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

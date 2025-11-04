@@ -34,6 +34,16 @@ export default function ProjectsPage() {
     );
   }, [projects, user]);
 
+  const budgetSummary = useMemo(() => {
+    const totals = visibleProjects.reduce<Record<string, number>>((acc, project) => {
+      acc[project.currency] = (acc[project.currency] ?? 0) + project.budget;
+      return acc;
+    }, {});
+    return Object.entries(totals)
+      .map(([currency, value]) => `${currency} ${value.toLocaleString()}`)
+      .join(" · ") || "Sin datos";
+  }, [visibleProjects]);
+
   const handleCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!clients.length) return;
@@ -91,28 +101,38 @@ export default function ProjectsPage() {
 
   return (
     <div className="grid gap-8">
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Proyectos</h1>
-            <p className="text-sm text-slate-300">
-              Gestiona presupuestos, estados y allocations para calcular márgenes automáticamente.
+      <section className="surface">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="grid gap-2">
+            <h1 className="text-3xl font-semibold text-[color:var(--text-primary)]">Proyectos</h1>
+            <p className="text-sm text-[color:var(--text-secondary)] max-w-2xl">
+              Gestiona presupuestos, estados y allocations para calcular márgenes automáticamente y dar visibilidad a Milo y Sergio.
             </p>
           </div>
-          <span className="rounded-full border border-slate-700 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
-            {visibleProjects.length} proyectos
-          </span>
+          <div className="tag">{visibleProjects.length} proyectos</div>
         </div>
+        <div className="surface-muted mt-6 grid gap-3 md:grid-cols-4">
+          <Summary label="Planning" value={visibleProjects.filter((project) => project.status === "planning").length} />
+          <Summary label="En progreso" value={visibleProjects.filter((project) => project.status === "wip").length} />
+          <Summary label="Finalizados" value={visibleProjects.filter((project) => project.status === "done").length} />
+          <Summary label="Presupuesto total" value={budgetSummary} />
+        </div>
+      </section>
 
-        {user?.role === "owner" && (
-          <form onSubmit={handleCreate} className="grid gap-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+      {user?.role === "owner" && (
+        <section className="surface">
+          <form onSubmit={handleCreate} className="grid gap-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Crear nuevo proyecto</h2>
+              <p className="text-xs text-[color:var(--text-secondary)]">Completa la información base y distribuye el split.</p>
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-xs text-slate-400">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
                 Cliente
                 <select
                   name="clientId"
                   required
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
                 >
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
@@ -121,57 +141,57 @@ export default function ProjectsPage() {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1 text-xs text-slate-400">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
                 Nombre del proyecto
                 <input
                   name="name"
                   required
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
                 />
               </label>
             </div>
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Descripción
               <textarea
                 name="description"
                 rows={2}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>
             <div className="grid gap-4 md:grid-cols-4">
-              <label className="grid gap-1 text-xs text-slate-400">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
                 Estado
                 <select
                   name="status"
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
                 >
                   <option value="planning">Planning</option>
                   <option value="wip">En progreso</option>
                   <option value="done">Finalizado</option>
                 </select>
               </label>
-              <label className="grid gap-1 text-xs text-slate-400">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
                 Inicio
                 <input
                   name="startDate"
                   type="date"
                   defaultValue={new Date().toISOString().slice(0, 10)}
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
                 />
               </label>
-              <label className="grid gap-1 text-xs text-slate-400">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
                 Fin
                 <input
                   name="endDate"
                   type="date"
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
                 />
               </label>
-              <label className="grid gap-1 text-xs text-slate-400">
+              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
                 Moneda
                 <select
                   name="currency"
-                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
                 >
                   <option value="USD">USD</option>
                   <option value="ARS">ARS</option>
@@ -179,7 +199,7 @@ export default function ProjectsPage() {
                 </select>
               </label>
             </div>
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Presupuesto
               <input
                 name="budget"
@@ -187,19 +207,17 @@ export default function ProjectsPage() {
                 min={0}
                 step="0.01"
                 required
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>
 
-            <div className="grid gap-3">
+            <div className="grid gap-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                  Allocations
-                </span>
+                <span className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-secondary)]">Allocations</span>
                 <button
                   type="button"
                   onClick={addEmptyAllocation}
-                  className="rounded-full border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-300"
+                  className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-emerald-400"
                 >
                   Añadir
                 </button>
@@ -208,18 +226,18 @@ export default function ProjectsPage() {
                 {allocations.map((allocation) => (
                   <div
                     key={allocation.id}
-                    className="grid gap-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 md:grid-cols-4"
+                    className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 md:grid-cols-4"
                   >
                     <input
                       value={allocation.name}
                       onChange={(event) => updateAllocation(allocation.id, "name", event.target.value)}
                       placeholder="Nombre"
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                      className="rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
                     />
                     <select
                       value={allocation.role}
                       onChange={(event) => updateAllocation(allocation.id, "role", event.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                      className="rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
                     >
                       <option value="milo">Milo</option>
                       <option value="sergio">Sergio</option>
@@ -230,7 +248,7 @@ export default function ProjectsPage() {
                       value={allocation.percentage ?? 0}
                       onChange={(event) => updateAllocation(allocation.id, "percentage", event.target.value)}
                       placeholder="%"
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                      className="rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
                     />
                     <div className="flex items-center gap-2">
                       <input
@@ -238,12 +256,12 @@ export default function ProjectsPage() {
                         value={allocation.fixedAmount ?? 0}
                         onChange={(event) => updateAllocation(allocation.id, "fixedAmount", event.target.value)}
                         placeholder="Monto fijo"
-                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                        className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
                       />
                       <button
                         type="button"
                         onClick={() => removeAllocation(allocation.id)}
-                        className="rounded-full border border-rose-600/60 px-3 py-1 text-xs text-rose-300"
+                        className="rounded-full border border-rose-400/70 px-3 py-1 text-xs text-rose-500 hover:bg-rose-50"
                       >
                         Quitar
                       </button>
@@ -255,54 +273,48 @@ export default function ProjectsPage() {
 
             <button
               type="submit"
-              className="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
+              className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
             >
               Crear proyecto
             </button>
           </form>
-        )}
-      </section>
+        </section>
+      )}
 
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-        <h2 className="text-lg font-semibold">Listado</h2>
-        <div className="grid gap-4">
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Listado de proyectos</h2>
+        <div className="mt-4 grid gap-4">
           {visibleProjects.map((project) => {
             const client = clients.find((client) => client.id === project.clientId);
             return (
               <article
                 key={project.id}
-                className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4"
+                className="grid gap-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-100">{project.name}</h3>
-                    <p className="text-xs text-slate-400">{client?.name ?? project.clientId}</p>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="grid gap-1">
+                    <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">{project.name}</h3>
+                    <p className="text-xs text-[color:var(--text-secondary)]">{client?.name ?? project.clientId}</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                    <span className="rounded-full border border-slate-700 px-3 py-1">{project.status}</span>
-                    <span className="rounded-full border border-slate-700 px-3 py-1">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                    <span className="tag">{project.status}</span>
+                    <span className="tag">
                       Presupuesto {project.currency} {project.budget.toLocaleString()}
                     </span>
-                    <span className="rounded-full border border-slate-700 px-3 py-1">
-                      Inicio {project.startDate}
-                    </span>
-                    {project.endDate && (
-                      <span className="rounded-full border border-slate-700 px-3 py-1">
-                        Fin {project.endDate}
-                      </span>
-                    )}
+                    <span className="tag">Inicio {project.startDate}</span>
+                    {project.endDate && <span className="tag">Fin {project.endDate}</span>}
                   </div>
                 </div>
                 {project.description && (
-                  <p className="text-sm text-slate-300">{project.description}</p>
+                  <p className="text-sm text-[color:var(--text-secondary)]">{project.description}</p>
                 )}
                 <div className="grid gap-2">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Allocations</p>
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-200">
+                  <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-secondary)]">Allocations</p>
+                  <div className="flex flex-wrap gap-2 text-xs text-[color:var(--text-secondary)]">
                     {project.allocations.map((allocation) => (
                       <span
                         key={allocation.id}
-                        className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1"
+                        className="rounded-full border border-emerald-400/60 bg-emerald-50 px-3 py-1 text-emerald-600"
                       >
                         {allocation.name} · {allocation.percentage ?? 0}%
                         {allocation.fixedAmount
@@ -317,6 +329,15 @@ export default function ProjectsPage() {
           })}
         </div>
       </section>
+    </div>
+  );
+}
+
+function Summary({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/90 p-4 text-center">
+      <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--text-secondary)]">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-[color:var(--text-primary)]">{value}</p>
     </div>
   );
 }
