@@ -8,6 +8,22 @@ import { useAuth } from "@/context/auth-context";
 import { useData } from "@/context/data-context";
 import { useTheme } from "@/context/theme-context";
 
+function hexToRgba(hex: string, alpha: number) {
+  const sanitized = hex.replace("#", "");
+  const value =
+    sanitized.length === 3
+      ? sanitized
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : sanitized;
+  const bigint = Number.parseInt(value, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const navigation = [
   {
     href: "/dashboard",
@@ -50,8 +66,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { pettyCash } = useData();
+  const { pettyCash, appTemplate } = useData();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.fontFamily = appTemplate.fontFamily;
+  }, [appTemplate.fontFamily]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const existing = document.querySelectorAll("[data-template-html='true']");
+    existing.forEach((node) => node.parentElement?.removeChild(node));
+    const html = appTemplate.customHtml?.trim();
+    if (!html) return;
+    const container = document.createElement("div");
+    container.setAttribute("data-template-html", "true");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    return () => {
+      container.remove();
+    };
+  }, [appTemplate.customHtml]);
 
   useEffect(() => {
     if (!user) {
@@ -65,6 +101,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const items = navigation.filter((item) => item.roles.includes(user.role));
 
+  const accent = appTemplate.primaryColor || "#10b981";
+  const accentContrast = appTemplate.secondaryColor || "#0f172a";
+  const accentSoft = hexToRgba(accent, 0.12);
+
   const baseBackground =
     theme === "dark"
       ? "bg-slate-950 text-slate-100"
@@ -73,10 +113,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     theme === "dark"
       ? "bg-slate-900/70 border border-slate-800"
       : "bg-white shadow-lg border border-slate-200";
-  const navItemActive =
-    theme === "dark"
-      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
-      : "border-emerald-500/40 bg-emerald-50 text-emerald-700";
   const navItemInactive =
     theme === "dark"
       ? "border-transparent hover:border-slate-700 hover:bg-slate-900/70"
@@ -93,15 +129,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-4">
           <Link href="/dashboard" className="flex items-center gap-3 text-lg font-semibold">
-            <span
-              className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-bold ${
-                theme === "dark"
-                  ? "bg-emerald-500/15 text-emerald-200"
-                  : "bg-emerald-500/10 text-emerald-700"
-              }`}
-            >
-              MB
-            </span>
+            {appTemplate.logoDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={appTemplate.logoDataUrl}
+                alt="Logo Monte Billing"
+                className="h-10 w-10 rounded-2xl object-cover"
+              />
+            ) : (
+              <span
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-bold"
+                style={{
+                  background: accentSoft,
+                  color: accentContrast,
+                  border: `1px solid ${accent}`,
+                }}
+              >
+                MB
+              </span>
+            )}
             Monte Billing
           </Link>
           <div className="flex items-center gap-4 text-sm">
@@ -135,11 +181,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               }`}
             >
               Fondo Monte:
-              <strong
-                className={`ml-2 ${
-                  theme === "dark" ? "text-emerald-300" : "text-emerald-600"
-                }`}
-              >
+              <strong className="ml-2" style={{ color: accent }}>
                 USD {pettyCash.balance.toFixed(2)}
               </strong>
             </span>
@@ -164,9 +206,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
-                  active ? navItemActive : navItemInactive
-                }`}
+                className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${navItemInactive}`}
+                style={
+                  active
+                    ? {
+                        borderColor: accent,
+                        background: accentSoft,
+                        color: accentContrast,
+                        boxShadow: `0 0 0 1px ${accentSoft}`,
+                      }
+                    : undefined
+                }
               >
                 {item.label}
               </Link>
@@ -182,12 +232,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                    active
-                      ? navItemActive
-                      : theme === "dark"
-                        ? "border-slate-700 text-slate-200 hover:border-emerald-400"
-                        : "border-slate-200 text-slate-600 hover:border-emerald-500"
+                    theme === "dark"
+                      ? "border-slate-700 text-slate-200 hover:border-slate-500"
+                      : "border-slate-200 text-slate-600 hover:border-slate-400"
                   }`}
+                  style={
+                    active
+                      ? {
+                          borderColor: accent,
+                          background: accentSoft,
+                          color: accentContrast,
+                        }
+                      : undefined
+                  }
                 >
                   {item.label}
                 </Link>

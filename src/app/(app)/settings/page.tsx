@@ -6,7 +6,7 @@ import { useAuth } from "@/context/auth-context";
 import { useData } from "@/context/data-context";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, users: authUsers, adminUpdateUser, adminRemoveUser, adminResetPassword } = useAuth();
   const {
     pettyCash,
     updatePettyCashRule,
@@ -14,16 +14,20 @@ export default function SettingsPage() {
     exchangeRates,
     integrations,
     updateIntegrations,
+    appTemplate,
+    updateAppTemplate,
+    resetAppTemplate,
   } = useData();
   const [ruleType, setRuleType] = useState<"percent" | "fixed">(pettyCash.ruleType);
   const [ruleValue, setRuleValue] = useState<number>(pettyCash.value);
+  const [passwordHints, setPasswordHints] = useState<Record<string, string>>({});
 
-  if (user?.role !== "owner") {
+  if (!user || (user.role !== "owner" && user.role !== "admin")) {
     return (
       <section className="surface">
         <h1 className="text-2xl font-semibold text-[color:var(--text-primary)]">Configuración financiera</h1>
         <p className="text-sm text-[color:var(--text-secondary)]">
-          Solo los owners pueden modificar reglas de caja chica, integraciones y tipos de cambio.
+          Solo los owners o administradores pueden modificar reglas de caja chica, integraciones y tipos de cambio.
         </p>
       </section>
     );
@@ -47,6 +51,55 @@ export default function SettingsPage() {
 
   const handleIntegrationToggle = (key: keyof typeof integrations) => (event: ChangeEvent<HTMLInputElement>) => {
     updateIntegrations(key, { enabled: event.target.checked });
+  };
+
+  const handleTemplateColorChange = (field: "primaryColor" | "secondaryColor") =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      updateAppTemplate({ [field]: event.target.value });
+    };
+
+  const handleTemplateFontChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateAppTemplate({ fontFamily: event.target.value });
+  };
+
+  const handleCustomHtmlChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    updateAppTemplate({ customHtml: event.target.value });
+  };
+
+  const handleLogoUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        updateAppTemplate({ logoDataUrl: reader.result });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUserUpdate = (id: string) => (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const role = form.get("role") as "admin" | "owner" | "collaborator";
+    const timezone = String(form.get("timezone"));
+    const preferredCurrency = String(form.get("preferredCurrency")) as "USD" | "ARS" | "COP";
+    adminUpdateUser(id, {
+      role,
+      timezone,
+      preferredCurrency,
+      notifications: {
+        email: form.get("notifyEmail") === "on",
+        slack: form.get("notifySlack") === "on",
+      },
+    });
+  };
+
+  const handleResetPassword = (id: string) => {
+    const generated = adminResetPassword(id);
+    if (generated) {
+      setPasswordHints((prev) => ({ ...prev, [id]: generated }));
+    }
   };
 
   return (
@@ -87,6 +140,90 @@ export default function SettingsPage() {
             Guardar regla de caja chica
           </button>
         </form>
+      </section>
+
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Plantilla de la aplicación</h2>
+        <p className="text-sm text-[color:var(--text-secondary)]">
+          Define logo, colores y tipografía global. También puedes inyectar HTML personalizado para banners o código de seguimiento.
+        </p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Color primario
+            <input
+              type="color"
+              value={appTemplate.primaryColor}
+              onChange={handleTemplateColorChange("primaryColor")}
+              className="h-10 w-16 rounded-md border border-[color:var(--border-subtle)]"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Color secundario
+            <input
+              type="color"
+              value={appTemplate.secondaryColor}
+              onChange={handleTemplateColorChange("secondaryColor")}
+              className="h-10 w-16 rounded-md border border-[color:var(--border-subtle)]"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)] md:col-span-2">
+            Tipografía global
+            <input
+              value={appTemplate.fontFamily}
+              onChange={handleTemplateFontChange}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)] md:col-span-2">
+            Logo (PNG o JPG)
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={handleLogoUpload}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm"
+            />
+          </label>
+        </div>
+
+        <label className="mt-4 grid gap-2 text-sm text-[color:var(--text-secondary)]">
+          HTML personalizado
+          <textarea
+            value={appTemplate.customHtml ?? ""}
+            onChange={handleCustomHtmlChange}
+            rows={4}
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+          />
+        </label>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--text-secondary)]">Previsualización</p>
+            <div className="mt-3 flex items-center gap-3">
+              {appTemplate.logoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={appTemplate.logoDataUrl} alt="Logo" className="h-12 w-12 rounded-full object-cover" />
+              ) : (
+                <span className="rounded-full bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-semibold text-[color:var(--text-secondary)]">
+                  Sin logo
+                </span>
+              )}
+              <div className="text-sm text-[color:var(--text-secondary)]">
+                <p style={{ color: appTemplate.primaryColor }}>Color primario</p>
+                <p style={{ color: appTemplate.secondaryColor }}>Color secundario</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={resetAppTemplate}
+              className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-[color:var(--text-primary)]"
+            >
+              Restablecer plantilla
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="surface">
@@ -235,6 +372,131 @@ export default function SettingsPage() {
               </div>
             )}
           </IntegrationCard>
+        </div>
+      </section>
+
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Control de usuarios</h2>
+        <p className="text-sm text-[color:var(--text-secondary)]">
+          Gestiona accesos del equipo, ajusta roles permitidos y resetea contraseñas de emergencia. Solo el administrador o los owners pueden realizar estos cambios.
+        </p>
+
+        <div className="mt-6 grid gap-4">
+          {authUsers.map((account) => (
+            <details
+              key={account.id}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]"
+            >
+              <summary
+                className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-5 text-left"
+                style={{ listStyle: "none" }}
+              >
+                <div>
+                  <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">{account.name}</h3>
+                  <p className="text-xs text-[color:var(--text-secondary)]">{account.email}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                  <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1 uppercase">{account.role}</span>
+                  <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">Zona horaria {account.timezone}</span>
+                  <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">Moneda {account.preferredCurrency}</span>
+                </div>
+              </summary>
+
+              <div className="grid gap-4 border-t border-[color:var(--border-subtle)] p-5 text-sm text-[color:var(--text-secondary)]">
+                <form onSubmit={handleUserUpdate(account.id)} className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2">
+                    Rol
+                    <select
+                      name="role"
+                      defaultValue={account.role}
+                      className="rounded-2xl border border-[color:var(--border-subtle)] bg-white px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="owner">Owner</option>
+                      <option value="collaborator">Colaborador</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2">
+                    Zona horaria
+                    <input
+                      name="timezone"
+                      defaultValue={account.timezone}
+                      className="rounded-2xl border border-[color:var(--border-subtle)] bg-white px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    Moneda preferida
+                    <select
+                      name="preferredCurrency"
+                      defaultValue={account.preferredCurrency}
+                      className="rounded-2xl border border-[color:var(--border-subtle)] bg-white px-4 py-3 text-sm text-[color:var(--text-primary)]"
+                    >
+                      <option value="USD">USD</option>
+                      <option value="ARS">ARS</option>
+                      <option value="COP">COP</option>
+                    </select>
+                  </label>
+                  <div className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 p-4 text-xs">
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        key={`${account.id}-email-${account.notifications.email ? "on" : "off"}`}
+                        type="checkbox"
+                        name="notifyEmail"
+                        defaultChecked={account.notifications.email}
+                        className="h-4 w-4 rounded"
+                      />
+                      Email operativo
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        key={`${account.id}-slack-${account.notifications.slack ? "on" : "off"}`}
+                        type="checkbox"
+                        name="notifySlack"
+                        defaultChecked={account.notifications.slack}
+                        className="h-4 w-4 rounded"
+                      />
+                      Avisos Slack
+                    </label>
+                    <p className="text-[color:var(--text-secondary)]">
+                      Estas preferencias sincronizan notificaciones de facturas, pagos y recordatorios.
+                    </p>
+                  </div>
+                  <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      className="rounded-full border px-4 py-2 text-xs font-semibold text-[color:var(--text-primary)]"
+                      style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}
+                    >
+                      Guardar cambios
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleResetPassword(account.id)}
+                      className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-[color:var(--text-primary)]"
+                    >
+                      Resetear contraseña
+                    </button>
+                    {passwordHints[account.id] ? (
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-600">
+                        Temporal: {passwordHints[account.id]}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => adminRemoveUser(account.id)}
+                      disabled={account.role !== "collaborator"}
+                      className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-500 disabled:cursor-not-allowed disabled:border-rose-100 disabled:text-rose-300"
+                    >
+                      Eliminar usuario
+                    </button>
+                  </div>
+                </form>
+                <p className="text-xs text-[color:var(--text-secondary)]">
+                  Para incorporar nuevos colaboradores, utiliza el formulario de registro desde el login con el rol &quot;Colaborador&quot;.
+                </p>
+              </div>
+            </details>
+          ))}
         </div>
       </section>
 

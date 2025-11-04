@@ -44,6 +44,9 @@ type AuthContextValue = {
   }) => Promise<void>;
   logout: () => void;
   updateProfile: (input: Partial<User>) => void;
+  adminUpdateUser: (id: string, input: AdminUpdateInput) => void;
+  adminRemoveUser: (id: string) => void;
+  adminResetPassword: (id: string) => string | null;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -52,6 +55,8 @@ const AUTH_STORAGE_KEY = "monte-auth-user";
 const USERS_STORAGE_KEY = "monte-auth-users";
 
 type StoredUser = User & { password: string };
+
+type AdminUpdateInput = Partial<User> & { password?: string };
 
 const defaultUsers: StoredUser[] = [
   {
@@ -336,6 +341,93 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [syncUsers]);
 
+  const adminUpdateUser = useCallback(
+    (id: string, input: AdminUpdateInput) => {
+      const { password: overridePassword, notifications, ...rest } = input;
+      syncUsers((list) => {
+        const target = list.find((stored) => stored.id === id);
+        if (!target) return list;
+        if (
+          rest.role === "admin" &&
+          list.some((stored) => stored.role === "admin" && stored.id !== id)
+        ) {
+          console.warn("Solo puede existir un administrador activo");
+          return list;
+        }
+        if (
+          rest.role === "owner" &&
+          list.some((stored) => stored.role === "owner" && stored.id !== id)
+        ) {
+          console.warn("Solo puede existir un owner activo");
+          return list;
+        }
+        return list.map((stored) => {
+          if (stored.id !== id) return stored;
+          return {
+            ...stored,
+            ...rest,
+            notifications: notifications
+              ? { ...stored.notifications, ...notifications }
+              : stored.notifications,
+            password: overridePassword ?? stored.password,
+          };
+        });
+      });
+      setUser((current) => {
+        if (!current || current.id !== id) return current;
+        const updatedNotifications = notifications
+          ? { ...current.notifications, ...notifications }
+          : current.notifications;
+        const updated: User = {
+          ...current,
+          ...rest,
+          notifications: updatedNotifications,
+        };
+        persistAuthUser(updated);
+        return updated;
+      });
+    },
+    [setUser, syncUsers],
+  );
+
+  const adminRemoveUser = useCallback(
+    (id: string) => {
+      let removed = false;
+      syncUsers((list) => {
+        const target = list.find((stored) => stored.id === id);
+        if (!target) return list;
+        if (target.role === "admin" || target.role === "owner") {
+          console.warn("No es posible eliminar administradores u owners");
+          return list;
+        }
+        removed = true;
+        return list.filter((stored) => stored.id !== id);
+      });
+      if (removed && user?.id === id) {
+        logout();
+      }
+    },
+    [logout, syncUsers, user?.id],
+  );
+
+  const adminResetPassword = useCallback(
+    (id: string) => {
+      let generated: string | null = null;
+      syncUsers((list) => {
+        let changed = false;
+        const next = list.map((stored) => {
+          if (stored.id !== id) return stored;
+          generated = `monte-${crypto.randomUUID().slice(0, 8)}`;
+          changed = true;
+          return { ...stored, password: generated };
+        });
+        return changed ? next : list;
+      });
+      return generated;
+    },
+    [syncUsers],
+  );
+
   const value = useMemo(
     () => ({
       user,
@@ -345,8 +437,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       register,
       updateProfile,
+      adminUpdateUser,
+      adminRemoveUser,
+      adminResetPassword,
     }),
-    [login, loginWithGoogle, logout, register, updateProfile, user, users],
+    [
+      login,
+      loginWithGoogle,
+      logout,
+      register,
+      updateProfile,
+      adminUpdateUser,
+      adminRemoveUser,
+      adminResetPassword,
+      user,
+      users,
+    ],
   );
 
   if (!isHydrated) {

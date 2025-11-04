@@ -1,11 +1,13 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
+import Image from "next/image";
+
 import { useAuth } from "@/context/auth-context";
 import { useData } from "@/context/data-context";
 import { buildInvoicePreviewImage, generateInvoicePdf, InvoicePdfPayload } from "@/lib/pdf";
+import { Modal } from "@/components/modal";
 
 function createEmptyLineItem() {
   return {
@@ -46,6 +48,9 @@ export default function InvoicesPage() {
   const [logoDataUrl, setLogoDataUrl] = useState<string>();
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTitle, setPreviewTitle] = useState("Previsualización");
   const [message, setMessage] = useState<Message>(null);
 
   useEffect(() => {
@@ -187,8 +192,10 @@ export default function InvoicesPage() {
     setIsPreviewing(true);
     try {
       const payload = buildPayload();
+      setPreviewTitle(`Previsualización ${payload.invoice.number}`);
       const url = await buildInvoicePreviewImage(payload);
       setPreviewUrl(url);
+      setIsPreviewOpen(true);
       setMessage({ tone: "success", text: "Previsualización actualizada. Descarga el PDF cuando estés listo." });
     } catch (error) {
       console.error(error);
@@ -225,6 +232,7 @@ export default function InvoicesPage() {
     });
     setMessage({ tone: "success", text: `Factura ${created.number} creada. Puedes descargarla o enviarla al cliente.` });
     setPreviewUrl(undefined);
+    setIsComposerOpen(false);
     setLineItems([createEmptyLineItem()]);
     setTaxes(0);
     setNotes("");
@@ -279,8 +287,10 @@ export default function InvoicesPage() {
     payload.projectName = project?.name ?? payload.projectName;
     payload.clientName = client?.name ?? payload.clientName;
     payload.clientEmail = client?.contactEmail ?? payload.clientEmail;
+    setPreviewTitle(`Factura ${invoice.number}`);
     const url = await buildInvoicePreviewImage(payload);
     setPreviewUrl(url);
+    setIsPreviewOpen(true);
     setMessage({ tone: "success", text: `Previsualizando ${invoice.number}.` });
   };
 
@@ -304,7 +314,16 @@ export default function InvoicesPage() {
               Genera facturas con numeración automática, personaliza la marca, añade un logo y distribuye un código QR que dirige al verificador oficial de Monte Animation.
             </p>
           </div>
-          <span className="tag">Próxima {nextInvoiceNumber}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="tag">Próxima {nextInvoiceNumber}</span>
+            <button
+              type="button"
+              onClick={() => setIsComposerOpen(true)}
+              className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-primary)] hover:border-[color:var(--text-primary)]"
+            >
+              Nueva factura
+            </button>
+          </div>
         </div>
         <div className="surface-muted mt-6 grid gap-4 md:grid-cols-4">
           <Metric label="Borradores" value={outstandingSummary.draft} />
@@ -325,7 +344,117 @@ export default function InvoicesPage() {
       )}
 
       <section className="surface">
-        <form onSubmit={handleCreate} className="grid gap-6">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Facturas existentes</h2>
+        <div className="mt-4 grid gap-4">
+          {invoices.map((invoice) => {
+            const project = projects.find((item) => item.id === invoice.projectId);
+            const client = clients.find((item) => item.id === project?.clientId);
+            return (
+              <details
+                key={invoice.id}
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]"
+              >
+                <summary
+                  className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-5 text-left"
+                  style={{ listStyle: "none" }}
+                >
+                  <div>
+                    <h3 className="text-xl font-semibold text-[color:var(--text-primary)]">{invoice.number}</h3>
+                    <p className="text-sm text-[color:var(--text-secondary)]">
+                      {project?.name ?? invoice.projectId} · {client?.name ?? "Cliente sin nombre"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                    <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1 capitalize">
+                      {invoice.status}
+                    </span>
+                    <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">
+                      {invoice.currency} {invoice.total.toLocaleString()}
+                    </span>
+                    <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">
+                      Vence {invoice.dueDate}
+                    </span>
+                  </div>
+                </summary>
+                <div className="grid gap-4 border-t border-[color:var(--border-subtle)] p-5">
+                  {invoice.notes && (
+                    <p className="text-sm text-[color:var(--text-secondary)]">{invoice.notes}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      onClick={() => updateInvoiceStatus(invoice.id, "sent")}
+                      className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--text-primary)]"
+                    >
+                      Marcar como enviada
+                    </button>
+                    <button
+                      onClick={() => updateInvoiceStatus(invoice.id, "paid")}
+                      className="rounded-full border px-3 py-2 font-semibold text-xs transition"
+                      style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}
+                    >
+                      Marcar como pagada
+                    </button>
+                    <button
+                      onClick={() => updateInvoiceStatus(invoice.id, "void")}
+                      className="rounded-full border border-rose-300 px-3 py-2 font-semibold text-rose-500"
+                    >
+                      Anular
+                    </button>
+                    <button
+                      onClick={() => handleExistingPreview(invoice.id)}
+                      className="rounded-full border px-3 py-2 font-semibold text-xs transition"
+                      style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}
+                    >
+                      Previsualizar
+                    </button>
+                    <button
+                      onClick={() => handleDownload(invoice.id)}
+                      className="rounded-full border px-3 py-2 font-semibold text-xs transition"
+                      style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}
+                    >
+                      Descargar PDF
+                    </button>
+                    <button
+                      onClick={() => handleCopyLink(invoice.verificationUrl)}
+                      className="rounded-full border border-dashed border-[color:var(--border-subtle)] px-3 py-2 font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--text-primary)]"
+                    >
+                      Copiar verificador
+                    </button>
+                  </div>
+                  <div className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
+                    <span>
+                      QR verificador: {
+                        <a
+                          href={invoice.verificationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[color:var(--text-primary)] underline decoration-dotted underline-offset-4"
+                        >
+                          {invoice.verificationUrl}
+                        </a>
+                      }
+                    </span>
+                    <span>
+                      Ítems: {invoice.lineItems.map((item) => `${item.description} (${invoice.currency} ${item.amount.toLocaleString()})`).join(" · ")}
+                    </span>
+                  </div>
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      </section>
+      <Modal
+        open={isComposerOpen}
+        onClose={() => {
+          setIsComposerOpen(false);
+          setPreviewUrl(undefined);
+        }}
+        title="Nueva factura"
+        description="Completa los datos del proyecto, personaliza la plantilla y genera el PDF con QR oficial."
+        widthClassName="max-w-4xl"
+      >
+        <form onSubmit={handleCreate} className="mt-6 grid gap-6">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Proyecto
@@ -380,46 +509,46 @@ export default function InvoicesPage() {
             </label>
           </div>
 
-          <div className="grid gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Ítems</h2>
-              <button
-                type="button"
-                onClick={handleAddLineItem}
-                className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-emerald-500"
-              >
-                Añadir línea
-              </button>
-            </div>
-            <div className="grid gap-3">
+          <details className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[color:var(--text-primary)]" style={{ listStyle: "none" }}>
+              Ítems de factura
+            </summary>
+            <div className="mt-4 grid gap-3">
               {lineItems.map((item) => (
                 <div
                   key={item.id}
-                  className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 md:grid-cols-[1fr,140px,auto] md:items-center"
+                  className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 p-4 md:grid-cols-[1fr,140px,auto] md:items-center"
                 >
                   <input
                     value={item.description}
                     onChange={(event) => handleLineItemChange(item.id, "description", event.target.value)}
                     placeholder="Descripción"
-                    className="rounded-xl border border-transparent bg-white/60 px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-emerald-400"
+                    className="rounded-xl border border-transparent bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--text-primary)]/40"
                   />
                   <input
                     type="number"
                     value={item.amount}
                     onChange={(event) => handleLineItemChange(item.id, "amount", event.target.value)}
-                    className="rounded-xl border border-transparent bg-white/60 px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-emerald-400"
+                    className="rounded-xl border border-transparent bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--text-primary)]/40"
                   />
                   <button
                     type="button"
                     onClick={() => handleRemoveLineItem(item.id)}
-                    className="rounded-full border border-transparent px-3 py-2 text-xs text-rose-500 hover:border-rose-400"
+                    className="rounded-full border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-50"
                   >
                     Quitar
                   </button>
                 </div>
               ))}
+              <button
+                type="button"
+                onClick={handleAddLineItem}
+                className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-[color:var(--text-primary)]"
+              >
+                Añadir línea
+              </button>
             </div>
-          </div>
+          </details>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
@@ -442,166 +571,107 @@ export default function InvoicesPage() {
             </label>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2">
-              <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Personalización</h3>
-              <div className="grid gap-3">
-                <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
-                  Color acento
-                  <input
-                    type="color"
-                    value={accentColor}
-                    onChange={(event) => setAccentColor(event.target.value)}
-                    className="h-10 w-16 rounded-md border border-[color:var(--border-subtle)]"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
-                  Encabezado
-                  <input
-                    value={headerText}
-                    onChange={(event) => setHeaderText(event.target.value)}
-                    className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
-                  Pie de factura
-                  <input
-                    value={footerText}
-                    onChange={(event) => setFooterText(event.target.value)}
-                    className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm text-[color:var(--text-primary)]"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
-                  Logo (PNG o JPG)
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    onChange={handleLogoUpload}
-                    className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm"
-                  />
-                </label>
-              </div>
+          <details className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[color:var(--text-primary)]" style={{ listStyle: "none" }}>
+              Personalización visual
+            </summary>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
+                Color acento
+                <input
+                  type="color"
+                  value={accentColor}
+                  onChange={(event) => setAccentColor(event.target.value)}
+                  className="h-10 w-16 rounded-md border border-[color:var(--border-subtle)]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
+                Encabezado
+                <input
+                  value={headerText}
+                  onChange={(event) => setHeaderText(event.target.value)}
+                  className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
+                Pie de factura
+                <input
+                  value={footerText}
+                  onChange={(event) => setFooterText(event.target.value)}
+                  className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
+                Logo (PNG o JPG)
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleLogoUpload}
+                  className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm"
+                />
+              </label>
             </div>
-            <div className="grid place-items-center rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-6 text-center">
-              <p className="text-sm text-[color:var(--text-secondary)]">Subtotal</p>
-              <p className="text-3xl font-semibold text-[color:var(--text-primary)]">{currency} {subtotal.toLocaleString()}</p>
-              <p className="mt-4 text-sm text-[color:var(--text-secondary)]">Total</p>
-              <p className="text-3xl font-semibold text-[color:var(--text-primary)]">{currency} {total.toLocaleString()}</p>
-            </div>
-          </div>
+          </details>
 
           <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+              Total estimado: <span className="font-semibold text-[color:var(--text-primary)]">{currency} {total.toLocaleString()}</span>
+            </div>
             <button
               type="button"
               onClick={handlePreview}
-              className="rounded-full border border-emerald-400 px-5 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"
+              className="rounded-full border px-4 py-2 text-xs font-semibold text-[color:var(--text-primary)]"
+              style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}
             >
               {isPreviewing ? "Generando…" : "Previsualizar"}
             </button>
             <button
               type="submit"
-              className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-400"
+              className="rounded-full px-5 py-2 text-xs font-semibold text-white"
+              style={{ background: "var(--brand-accent)" }}
             >
               Crear factura
             </button>
           </div>
         </form>
-      </section>
-
-      {previewUrl && (
-        <section className="surface">
-          <h2 className="text-lg font-semibold text-[color:var(--text-primary)] mb-4">Previsualización</h2>
-          <div className="overflow-hidden rounded-3xl border border-[color:var(--border-subtle)] bg-white">
-            <img src={previewUrl} alt="Previsualización de factura" className="w-full" />
+        {previewUrl ? (
+          <div className="mt-6 overflow-hidden rounded-3xl border border-[color:var(--border-subtle)] bg-white">
+            <Image
+              src={previewUrl}
+              alt="Previsualización de factura"
+              width={1600}
+              height={2260}
+              className="h-auto w-full"
+              unoptimized
+            />
           </div>
-        </section>
-      )}
+        ) : null}
+      </Modal>
 
-      <section className="surface">
-        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Facturas existentes</h2>
-        <div className="mt-4 grid gap-4">
-          {invoices.map((invoice) => {
-            const project = projects.find((item) => item.id === invoice.projectId);
-            const client = clients.find((item) => item.id === project?.clientId);
-            return (
-              <article
-                key={invoice.id}
-                className="grid gap-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-xl font-semibold text-[color:var(--text-primary)]">{invoice.number}</h3>
-                    <p className="text-sm text-[color:var(--text-secondary)]">
-                      {project?.name ?? invoice.projectId} · {client?.name ?? "Cliente sin nombre"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-secondary)]">
-                    <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">
-                      {invoice.status}
-                    </span>
-                    <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">
-                      {invoice.currency} {invoice.total.toLocaleString()}
-                    </span>
-                    <span className="rounded-full border border-[color:var(--border-subtle)] px-3 py-1">
-                      Vence {invoice.dueDate}
-                    </span>
-                  </div>
-                </div>
-
-                {invoice.notes && (
-                  <p className="text-sm text-[color:var(--text-secondary)]">{invoice.notes}</p>
-                )}
-
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <button
-                    onClick={() => updateInvoiceStatus(invoice.id, "sent")}
-                    className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 text-[color:var(--text-secondary)] hover:border-emerald-500"
-                  >
-                    Marcar como enviada
-                  </button>
-                  <button
-                    onClick={() => updateInvoiceStatus(invoice.id, "paid")}
-                    className="rounded-full border border-emerald-400 px-3 py-2 text-emerald-600"
-                  >
-                    Marcar como pagada
-                  </button>
-                  <button
-                    onClick={() => updateInvoiceStatus(invoice.id, "void")}
-                    className="rounded-full border border-rose-300 px-3 py-2 text-rose-500"
-                  >
-                    Anular
-                  </button>
-                  <button
-                    onClick={() => handleExistingPreview(invoice.id)}
-                    className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 text-[color:var(--text-secondary)] hover:border-emerald-500"
-                  >
-                    Previsualizar
-                  </button>
-                  <button
-                    onClick={() => handleDownload(invoice.id)}
-                    className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 text-[color:var(--text-secondary)] hover:border-emerald-500"
-                  >
-                    Descargar PDF
-                  </button>
-                  <button
-                    onClick={() => handleCopyLink(invoice.verificationUrl)}
-                    className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 text-[color:var(--text-secondary)] hover:border-emerald-500"
-                  >
-                    Copiar verificador
-                  </button>
-                </div>
-
-                <div className="grid gap-1 text-xs text-[color:var(--text-secondary)]">
-                  <span>QR verificador: {invoice.verificationUrl}</span>
-                  <span>
-                    Ítems: {invoice.lineItems.map((item) => `${item.description} (${invoice.currency} ${item.amount.toLocaleString()})`).join(" · ")}
-                  </span>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+      <Modal
+        open={isPreviewOpen}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setPreviewUrl(undefined);
+        }}
+        title={previewTitle}
+        widthClassName="max-w-3xl"
+      >
+        {previewUrl ? (
+          <div className="overflow-hidden rounded-3xl border border-[color:var(--border-subtle)] bg-white">
+            <Image
+              src={previewUrl}
+              alt={previewTitle}
+              width={1600}
+              height={2260}
+              className="h-auto w-full"
+              unoptimized
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-[color:var(--text-secondary)]">Generando imagen de referencia…</p>
+        )}
+      </Modal>
     </div>
   );
 }

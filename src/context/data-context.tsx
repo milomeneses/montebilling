@@ -141,6 +141,15 @@ type MonteDataState = {
   exchangeRates: ExchangeRate[];
   nextInvoiceSequence: number;
   integrations: IntegrationSettings;
+  appTemplate: AppTemplateSettings;
+};
+
+type AppTemplateSettings = {
+  primaryColor: string;
+  secondaryColor: string;
+  fontFamily: string;
+  logoDataUrl?: string;
+  customHtml?: string;
 };
 
 type IntegrationSettings = {
@@ -197,6 +206,8 @@ type DataContextValue = MonteDataState & {
   addExchangeRate: (input: Omit<ExchangeRate, "id">) => void;
   importFromCsv: (rows: CsvRow[]) => { summary: string; imported: number };
   updateIntegrations: (key: keyof IntegrationSettings, input: Partial<IntegrationSettings[typeof key]>) => void;
+  updateAppTemplate: (input: Partial<AppTemplateSettings>) => void;
+  resetAppTemplate: () => void;
 };
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -549,6 +560,13 @@ const defaultState: MonteDataState = {
       smtpPort: undefined,
     },
   },
+  appTemplate: {
+    primaryColor: "#10b981",
+    secondaryColor: "#0f172a",
+    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    logoDataUrl: "",
+    customHtml: "",
+  },
 };
 
 function cloneState(state: MonteDataState): MonteDataState {
@@ -579,6 +597,7 @@ function cloneState(state: MonteDataState): MonteDataState {
       drive: { ...state.integrations.drive },
       email: { ...state.integrations.email },
     },
+    appTemplate: { ...state.appTemplate },
   };
 }
 
@@ -617,6 +636,10 @@ function loadState(): MonteDataState {
           ...defaultState.integrations.email,
           ...parsed.integrations?.email,
         },
+      },
+      appTemplate: {
+        ...defaultState.appTemplate,
+        ...parsed.appTemplate,
       },
     };
   } catch (error) {
@@ -1000,6 +1023,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  const updateAppTemplate = useCallback(
+    (input: Partial<AppTemplateSettings>) => {
+      mutate((draft) => {
+        draft.appTemplate = {
+          ...draft.appTemplate,
+          ...input,
+        };
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const resetAppTemplate = useCallback(() => {
+    mutate((draft) => {
+      draft.appTemplate = { ...defaultState.appTemplate };
+      return draft;
+    });
+  }, [mutate]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.style.setProperty("--brand-accent", state.appTemplate.primaryColor);
+    root.style.setProperty("--brand-accent-contrast", state.appTemplate.secondaryColor);
+    root.style.setProperty("--brand-font-family", state.appTemplate.fontFamily);
+  }, [state.appTemplate.fontFamily, state.appTemplate.primaryColor, state.appTemplate.secondaryColor]);
+
   const importFromCsv = useCallback(
     (rows: CsvRow[]) => {
       let imported = 0;
@@ -1265,6 +1316,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExchangeRate,
       importFromCsv,
       updateIntegrations,
+      updateAppTemplate,
+      resetAppTemplate,
     }),
     [
       state,
@@ -1284,6 +1337,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addExchangeRate,
       importFromCsv,
       updateIntegrations,
+      updateAppTemplate,
+      resetAppTemplate,
     ],
   );
 

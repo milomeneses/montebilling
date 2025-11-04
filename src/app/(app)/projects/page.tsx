@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { useAuth } from "@/context/auth-context";
 import { useData } from "@/context/data-context";
+import { Modal } from "@/components/modal";
 
 type AllocationForm = {
   id: string;
@@ -23,6 +24,7 @@ export default function ProjectsPage() {
   const { user } = useAuth();
   const { projects, clients, addProject } = useData();
   const [allocations, setAllocations] = useState<AllocationForm[]>(defaultAllocations);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const visibleProjects = useMemo(() => {
     if (user && user.role !== "collaborator") return projects;
@@ -69,6 +71,7 @@ export default function ProjectsPage() {
     });
     event.currentTarget.reset();
     setAllocations(defaultAllocations.map((allocation) => ({ ...allocation, id: crypto.randomUUID() })));
+    setIsCreateOpen(false);
   };
 
   const updateAllocation = (id: string, field: keyof AllocationForm, value: string) => {
@@ -109,7 +112,18 @@ export default function ProjectsPage() {
               Gestiona presupuestos, estados y allocations para calcular márgenes automáticamente y dar visibilidad a Milo y Sergio.
             </p>
           </div>
-          <div className="tag">{visibleProjects.length} proyectos</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="tag">{visibleProjects.length} proyectos</span>
+            {user && user.role !== "collaborator" ? (
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(true)}
+                className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-primary)] hover:border-[color:var(--text-primary)]"
+              >
+                Nuevo proyecto
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="surface-muted mt-6 grid gap-3 md:grid-cols-4">
           <Summary label="Planning" value={visibleProjects.filter((project) => project.status === "planning").length} />
@@ -119,167 +133,6 @@ export default function ProjectsPage() {
         </div>
       </section>
 
-      {user && user.role !== "collaborator" && (
-        <section className="surface">
-          <form onSubmit={handleCreate} className="grid gap-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Crear nuevo proyecto</h2>
-              <p className="text-xs text-[color:var(--text-secondary)]">Completa la información base y distribuye el split.</p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-                Cliente
-                <select
-                  name="clientId"
-                  required
-                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-                >
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-                Nombre del proyecto
-                <input
-                  name="name"
-                  required
-                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-                />
-              </label>
-            </div>
-            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-              Descripción
-              <textarea
-                name="description"
-                rows={2}
-                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-              />
-            </label>
-            <div className="grid gap-4 md:grid-cols-4">
-              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-                Estado
-                <select
-                  name="status"
-                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-                >
-                  <option value="planning">Planning</option>
-                  <option value="wip">En progreso</option>
-                  <option value="done">Finalizado</option>
-                </select>
-              </label>
-              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-                Inicio
-                <input
-                  name="startDate"
-                  type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-                Fin
-                <input
-                  name="endDate"
-                  type="date"
-                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-                Moneda
-                <select
-                  name="currency"
-                  className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-                >
-                  <option value="USD">USD</option>
-                  <option value="ARS">ARS</option>
-                  <option value="COP">COP</option>
-                </select>
-              </label>
-            </div>
-            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
-              Presupuesto
-              <input
-                name="budget"
-                type="number"
-                min={0}
-                step="0.01"
-                required
-                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
-              />
-            </label>
-
-            <div className="grid gap-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-secondary)]">Allocations</span>
-                <button
-                  type="button"
-                  onClick={addEmptyAllocation}
-                  className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-emerald-400"
-                >
-                  Añadir
-                </button>
-              </div>
-              <div className="grid gap-3">
-                {allocations.map((allocation) => (
-                  <div
-                    key={allocation.id}
-                    className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 md:grid-cols-4"
-                  >
-                    <input
-                      value={allocation.name}
-                      onChange={(event) => updateAllocation(allocation.id, "name", event.target.value)}
-                      placeholder="Nombre"
-                      className="rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
-                    />
-                    <select
-                      value={allocation.role}
-                      onChange={(event) => updateAllocation(allocation.id, "role", event.target.value)}
-                      className="rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
-                    >
-                      <option value="milo">Milo</option>
-                      <option value="sergio">Sergio</option>
-                      <option value="collaborator">Colaborador</option>
-                    </select>
-                    <input
-                      type="number"
-                      value={allocation.percentage ?? 0}
-                      onChange={(event) => updateAllocation(allocation.id, "percentage", event.target.value)}
-                      placeholder="%"
-                      className="rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
-                    />
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        value={allocation.fixedAmount ?? 0}
-                        onChange={(event) => updateAllocation(allocation.id, "fixedAmount", event.target.value)}
-                        placeholder="Monto fijo"
-                        className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-white/90 px-4 py-2 text-sm text-[color:var(--text-primary)]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeAllocation(allocation.id)}
-                        className="rounded-full border border-rose-400/70 px-3 py-1 text-xs text-rose-500 hover:bg-rose-50"
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
-            >
-              Crear proyecto
-            </button>
-          </form>
-        </section>
-      )}
 
       <section className="surface">
         <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Listado de proyectos</h2>
@@ -329,6 +182,167 @@ export default function ProjectsPage() {
           })}
         </div>
       </section>
+
+      <Modal
+        open={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        title="Nuevo proyecto"
+        description="Distribuye presupuestos y allocations antes de iniciar la producción."
+        widthClassName="max-w-4xl"
+      >
+        <form onSubmit={handleCreate} className="mt-6 grid gap-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Cliente
+              <select
+                name="clientId"
+                required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              >
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Nombre del proyecto
+              <input
+                name="name"
+                required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+          </div>
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Descripción
+            <textarea
+              name="description"
+              rows={2}
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+            />
+          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Estado
+              <select
+                name="status"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              >
+                <option value="planning">Planning</option>
+                <option value="wip">En progreso</option>
+                <option value="done">Finalizado</option>
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Presupuesto
+              <input
+                name="budget"
+                type="number"
+                required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Fecha inicio
+              <input
+                type="date"
+                name="startDate"
+                required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Fecha cierre
+              <input
+                type="date"
+                name="endDate"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Moneda
+              <select
+                name="currency"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              >
+                <option value="USD">USD</option>
+                <option value="ARS">ARS</option>
+                <option value="COP">COP</option>
+              </select>
+            </label>
+            <div className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              <span>Split del equipo</span>
+              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 p-4 text-xs text-[color:var(--text-secondary)]">
+                Ajusta porcentajes y montos desde la sección &quot;Allocations&quot; abajo.
+              </div>
+            </div>
+          </div>
+          <details className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[color:var(--text-primary)]" style={{ listStyle: "none" }}>
+              Allocations
+            </summary>
+            <div className="mt-4 grid gap-3">
+              {allocations.map((allocation) => (
+                <div
+                  key={allocation.id}
+                  className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 p-4 md:grid-cols-4"
+                >
+                  <input
+                    value={allocation.name}
+                    onChange={(event) => updateAllocation(allocation.id, "name", event.target.value)}
+                    className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                  />
+                  <select
+                    value={allocation.role}
+                    onChange={(event) => updateAllocation(allocation.id, "role", event.target.value)}
+                    className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                  >
+                    <option value="milo">Milo</option>
+                    <option value="sergio">Sergio</option>
+                    <option value="collaborator">Colaborador</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={allocation.percentage ?? 0}
+                    onChange={(event) => updateAllocation(allocation.id, "percentage", event.target.value)}
+                    className="rounded-xl border border-[color:var(--border-subtle)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)]"
+                    placeholder="%"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeAllocation(allocation.id)}
+                    className="rounded-full border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-50"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addEmptyAllocation}
+                className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-[color:var(--text-primary)]"
+              >
+                Añadir integrante
+              </button>
+            </div>
+          </details>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="rounded-full px-5 py-2 text-xs font-semibold text-white"
+              style={{ background: "var(--brand-accent)" }}
+            >
+              Crear proyecto
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

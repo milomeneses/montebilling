@@ -25,10 +25,6 @@ export type InvoicePdfPayload = {
   allocationsSummary?: string;
 };
 
-function stringToUint8(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
-}
-
 function mergeUint8(chunks: Uint8Array[]): Uint8Array {
   const total = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
   const buffer = new Uint8Array(total);
@@ -265,72 +261,64 @@ function dataUrlToUint8(dataUrl: string): { bytes: Uint8Array; width: number; he
 
 function buildPdfFromImage(imageDataUrl: string, canvasWidth: number, canvasHeight: number): Uint8Array {
   const { bytes: imageBytes } = dataUrlToUint8(imageDataUrl);
-  const objects: Uint8Array[] = [];
-  const xref: number[] = [];
-  const header = stringToUint8("%PDF-1.3\n");
-  objects.push(header);
-  xref.push(0);
+  const encoder = new TextEncoder();
+  const header = encoder.encode("%PDF-1.4\n");
 
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const margin = 36;
-  const drawWidth = pageWidth - margin * 2;
-  const drawHeight = (drawWidth * canvasHeight) / canvasWidth;
-  const drawX = margin;
+  const scale = Math.min(
+    (pageWidth - margin * 2) / canvasWidth,
+    (pageHeight - margin * 2) / canvasHeight,
+  );
+  const drawWidth = canvasWidth * scale;
+  const drawHeight = canvasHeight * scale;
+  const drawX = (pageWidth - drawWidth) / 2;
   const drawY = (pageHeight - drawHeight) / 2;
 
-  const objChunks: Uint8Array[] = [];
+  const objects: Uint8Array[] = [];
+  const offsets: number[] = [0];
 
-  function addObject(content: Uint8Array): number {
-    const id = objChunks.length + 1;
-    const prefix = stringToUint8(`${id} 0 obj\n`);
-    const suffix = stringToUint8("endobj\n");
-    objChunks.push(mergeUint8([prefix, content, suffix]));
-    return id;
-  }
-
-  const catalogId = addObject(stringToUint8("<< /Type /Catalog /Pages 2 0 R >>\n"));
-  addObject(stringToUint8("<< /Type /Pages /Kids [3 0 R] /Count 1 >>\n"));
-
-  const imageStream = mergeUint8([
-    stringToUint8(
-      `<< /Type /XObject /Subtype /Image /Width ${canvasWidth} /Height ${canvasHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`,
+  const catalog = encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  const pages = encoder.encode("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+  const page = encoder.encode(
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth.toFixed(2)} ${pageHeight.toFixed(2)}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>\nendobj\n`,
+  );
+  const contentCommands = `q\n${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${drawX.toFixed(2)} ${drawY.toFixed(2)} cm\n/Im0 Do\nQ\n`;
+  const content = mergeUint8([
+    encoder.encode(`4 0 obj\n<< /Length ${contentCommands.length} >>\nstream\n`),
+    encoder.encode(contentCommands),
+    encoder.encode("endstream\nendobj\n"),
+  ]);
+  const image = mergeUint8([
+    encoder.encode(
+      `5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvasWidth} /Height ${canvasHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`,
     ),
     imageBytes,
-    stringToUint8("\nendstream\n"),
+    encoder.encode("\nendstream\nendobj\n"),
   ]);
-  const imageId = addObject(imageStream);
 
-  const contentCommands = `q\n${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${drawX.toFixed(2)} ${drawY.toFixed(2)} cm\n/Im0 Do\nQ\n`;
-  const contentStream = mergeUint8([
-    stringToUint8(`<< /Length ${contentCommands.length} >>\nstream\n`),
-    stringToUint8(contentCommands),
-    stringToUint8("endstream\n"),
-  ]);
-  const contentId = addObject(contentStream);
+  objects.push(catalog, pages, page, content, image);
 
-  const pageContent = stringToUint8(
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth.toFixed(2)} ${pageHeight.toFixed(2)}] /Resources << /XObject << /Im0 ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>\n`,
-  );
-  addObject(pageContent);
+  let offset = header.length;
+  const body = objects.map((object) => {
+    offsets.push(offset);
+    offset += object.length;
+    return object;
+  });
 
-  const xrefStart = objChunks.reduce((offset, chunk) => {
-    xref.push(offset + header.length);
-    return offset + chunk.length;
-  }, 0);
-
-  const xrefTable = ["xref\n", `0 ${objChunks.length + 1}\n`, "0000000000 65535 f \n"];
-  for (let i = 1; i <= objChunks.length; i += 1) {
-    const offset = xref[i];
-    xrefTable.push(`${offset.toString().padStart(10, "0")} 00000 n \n`);
+  const startXref = offset;
+  const xrefLines = ["xref\n", `0 ${objects.length + 1}\n`, "0000000000 65535 f \n"];
+  for (let index = 1; index < offsets.length; index += 1) {
+    xrefLines.push(`${offsets[index].toString().padStart(10, "0")} 00000 n \n`);
   }
-  const trailer = `trailer\n<< /Size ${objChunks.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${header.length + xrefStart}\n%%EOF`;
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF`;
 
   return mergeUint8([
     header,
-    ...objChunks,
-    stringToUint8(xrefTable.join("")),
-    stringToUint8(trailer),
+    ...body,
+    encoder.encode(xrefLines.join("")),
+    encoder.encode(trailer),
   ]);
 }
 
