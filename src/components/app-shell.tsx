@@ -119,7 +119,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       : "border-transparent hover:border-slate-200 hover:bg-slate-100";
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${baseBackground}`}>
+    <div
+      className={`flex min-h-screen flex-col overflow-x-hidden transition-colors duration-300 ${baseBackground}`}
+      style={{ minHeight: "100vh" }}
+    >
       <header
         className={`sticky top-0 z-40 border-b backdrop-blur ${
           theme === "dark"
@@ -198,12 +201,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-6xl gap-8 px-6 py-10">
-        <nav className={`hidden w-60 flex-col gap-2 md:flex ${theme === "dark" ? "text-slate-200" : "text-slate-600"}`}>
-          {items.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <Link
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="mx-auto flex w-full max-w-6xl gap-8 px-6 py-10">
+          <nav className={`hidden w-60 flex-col gap-2 md:flex ${theme === "dark" ? "text-slate-200" : "text-slate-600"}`}>
+            {items.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
                 key={item.href}
                 href={item.href}
                 className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${navItemInactive}`}
@@ -223,7 +227,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <main className="flex-1">
+        <main className="flex-1 min-w-0">
           <div className="mb-6 flex flex-wrap items-center gap-3 md:hidden">
             {items.map((item) => {
               const active = pathname === item.href;
@@ -255,6 +259,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {children}
           </div>
         </main>
+        </div>
       </div>
     </div>
   );

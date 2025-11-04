@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import Image from "next/image";
 
@@ -28,8 +28,12 @@ export default function InvoicesPage() {
     projects,
     clients,
     createInvoice,
+    updateInvoice,
     updateInvoiceStatus,
     nextInvoiceSequence,
+    invoicePrefix,
+    invoiceNumberPadding,
+    defaultBankDetails,
   } = useData();
 
   const [projectId, setProjectId] = useState<string>(projects[0]?.id ?? "");
@@ -52,6 +56,75 @@ export default function InvoicesPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("Previsualización");
   const [message, setMessage] = useState<Message>(null);
+  const [bankDetails, setBankDetails] = useState(defaultBankDetails);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+
+  const resetComposer = useCallback(() => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const due = new Date();
+    due.setDate(due.getDate() + 30);
+    setIssueDate(todayIso);
+    setDueDate(due.toISOString().slice(0, 10));
+    setLineItems([createEmptyLineItem()]);
+    setTaxes(0);
+    setNotes("");
+    setAccentColor("#10b981");
+    setHeaderText("Factura Monte Animation");
+    setFooterText("Gracias por confiar en Monte Animation.");
+    setLogoDataUrl(undefined);
+    setBankDetails(defaultBankDetails);
+    setPreviewUrl(undefined);
+    setIsPreviewOpen(false);
+    setIsPreviewing(false);
+    setEditingInvoiceId(null);
+    setInvoiceNumber(nextInvoiceNumber);
+    setPreviewTitle("Previsualización");
+  }, [defaultBankDetails, nextInvoiceNumber]);
+
+  const handleComposerClose = useCallback(() => {
+    setIsComposerOpen(false);
+    resetComposer();
+  }, [resetComposer]);
+
+  const handleNewInvoice = useCallback(() => {
+    resetComposer();
+    setPreviewTitle("Previsualización");
+    setIsComposerOpen(true);
+  }, [resetComposer]);
+
+  const openComposerForInvoice = useCallback(
+    (invoiceId: string) => {
+      const invoice = invoices.find((item) => item.id === invoiceId);
+      if (!invoice) return;
+      setEditingInvoiceId(invoiceId);
+      setProjectId(invoice.projectId);
+      setIssueDate(invoice.issueDate);
+      setDueDate(invoice.dueDate);
+      setLineItems(
+        invoice.lineItems.map((item) => ({
+          ...item,
+          id: item.id || crypto.randomUUID(),
+        })),
+      );
+      setTaxes(invoice.taxes);
+      setNotes(invoice.notes ?? "");
+      setAccentColor(invoice.branding.accentColor ?? "#10b981");
+      setHeaderText(invoice.branding.headerText ?? "Factura Monte Animation");
+      setFooterText(
+        invoice.branding.footerText ?? "Gracias por confiar en Monte Animation.",
+      );
+      setLogoDataUrl(invoice.branding.logoDataUrl);
+      setBankDetails(invoice.bankDetails ?? defaultBankDetails);
+      setInvoiceNumber(invoice.number);
+      setIsComposerOpen(true);
+      setIsPreviewOpen(false);
+      setIsPreviewing(false);
+      setPreviewUrl(undefined);
+      setPreviewTitle(`Editar ${invoice.number}`);
+    },
+    [defaultBankDetails, invoices],
+  );
 
   useEffect(() => {
     if (projects.length === 0) return;
@@ -59,6 +132,12 @@ export default function InvoicesPage() {
       setProjectId(projects[0].id);
     }
   }, [projects, projectId]);
+
+  useEffect(() => {
+    if (!editingInvoiceId) {
+      setInvoiceNumber(nextInvoiceNumber);
+    }
+  }, [editingInvoiceId, nextInvoiceNumber]);
 
   const activeProject = useMemo(
     () => projects.find((project) => project.id === projectId),
@@ -90,12 +169,22 @@ export default function InvoicesPage() {
   }, [invoices]);
 
   const nextInvoiceNumber = useMemo(
-    () => `MONTE-${String(nextInvoiceSequence).padStart(4, "0")}`,
-    [nextInvoiceSequence],
+    () =>
+      `${invoicePrefix}${String(nextInvoiceSequence).padStart(
+        Math.max(1, invoiceNumberPadding || 4),
+        "0",
+      )}`,
+    [invoicePrefix, invoiceNumberPadding, nextInvoiceSequence],
   );
 
   const verificationBase =
     typeof window !== "undefined" ? window.location.origin : "https://billing.monteanimation.com";
+
+  useEffect(() => {
+    if (!isComposerOpen) {
+      setBankDetails(defaultBankDetails);
+    }
+  }, [defaultBankDetails, isComposerOpen]);
 
   if (!user || user.role === "collaborator") {
     return (
@@ -157,12 +246,13 @@ export default function InvoicesPage() {
       logoDataUrl?: string;
     };
     verificationUrl?: string;
+    bankDetails?: string;
   }): InvoicePdfPayload => {
-    const invoiceNumber = override?.number ?? nextInvoiceNumber;
+    const resolvedNumber = override?.number ?? (invoiceNumber || nextInvoiceNumber);
     const lineItemsList = override?.lineItems ?? lineItems;
     return {
       invoice: {
-        number: invoiceNumber,
+        number: resolvedNumber,
         issueDate: override?.issueDate ?? issueDate,
         dueDate: override?.dueDate ?? dueDate,
         subtotal: override?.subtotal ?? subtotal,
@@ -177,7 +267,8 @@ export default function InvoicesPage() {
           footerText: override?.branding?.footerText ?? footerText,
           logoDataUrl: override?.branding?.logoDataUrl ?? logoDataUrl,
         },
-        verificationUrl: override?.verificationUrl ?? `${verificationBase}/verify/${invoiceNumber}`,
+        verificationUrl: override?.verificationUrl ?? `${verificationBase}/verify/${resolvedNumber}`,
+        bankDetails: override?.bankDetails ?? bankDetails,
       },
       projectName: activeProject?.name ?? "Proyecto Monte",
       clientName: activeClient?.name ?? "Cliente Monte",
@@ -191,7 +282,7 @@ export default function InvoicesPage() {
   const handlePreview = async () => {
     setIsPreviewing(true);
     try {
-      const payload = buildPayload();
+      const payload = buildPayload({ number: invoiceNumber });
       setPreviewTitle(`Previsualización ${payload.invoice.number}`);
       const url = await buildInvoicePreviewImage(payload);
       setPreviewUrl(url);
@@ -205,7 +296,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!projectId) return;
     const validItems = lineItems.filter((item) => item.description.trim().length > 0 && Number(item.amount) > 0);
@@ -213,8 +304,10 @@ export default function InvoicesPage() {
       setMessage({ tone: "warning", text: "Agrega al menos un ítem con descripción y monto." });
       return;
     }
-    const created = createInvoice({
+    const normalizedNumber = invoiceNumber.trim() || nextInvoiceNumber;
+    const payload = {
       projectId,
+      number: normalizedNumber,
       issueDate,
       dueDate,
       subtotal,
@@ -223,19 +316,28 @@ export default function InvoicesPage() {
       currency: currency as "USD" | "ARS" | "COP",
       notes,
       lineItems: validItems,
+      bankDetails,
       branding: {
         accentColor,
         headerText,
         footerText,
         logoDataUrl,
       },
-    });
-    setMessage({ tone: "success", text: `Factura ${created.number} creada. Puedes descargarla o enviarla al cliente.` });
-    setPreviewUrl(undefined);
+    };
+
+    if (editingInvoiceId) {
+      updateInvoice(editingInvoiceId, payload);
+      setMessage({ tone: "success", text: `Factura ${normalizedNumber} actualizada.` });
+    } else {
+      const created = createInvoice(payload);
+      setMessage({
+        tone: "success",
+        text: `Factura ${created.number} creada. Puedes descargarla o enviarla al cliente.`,
+      });
+    }
+
     setIsComposerOpen(false);
-    setLineItems([createEmptyLineItem()]);
-    setTaxes(0);
-    setNotes("");
+    resetComposer();
   };
 
   const handleDownload = async (invoiceId: string) => {
@@ -254,6 +356,7 @@ export default function InvoicesPage() {
       lineItems: invoice.lineItems,
       branding: invoice.branding,
       verificationUrl: invoice.verificationUrl,
+      bankDetails: invoice.bankDetails ?? defaultBankDetails,
     });
     payload.projectName = project?.name ?? payload.projectName;
     payload.clientName = client?.name ?? payload.clientName;
@@ -283,6 +386,7 @@ export default function InvoicesPage() {
       lineItems: invoice.lineItems,
       branding: invoice.branding,
       verificationUrl: invoice.verificationUrl,
+      bankDetails: invoice.bankDetails ?? defaultBankDetails,
     });
     payload.projectName = project?.name ?? payload.projectName;
     payload.clientName = client?.name ?? payload.clientName;
@@ -318,7 +422,7 @@ export default function InvoicesPage() {
             <span className="tag">Próxima {nextInvoiceNumber}</span>
             <button
               type="button"
-              onClick={() => setIsComposerOpen(true)}
+              onClick={handleNewInvoice}
               className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-primary)] hover:border-[color:var(--text-primary)]"
             >
               Nueva factura
@@ -380,7 +484,21 @@ export default function InvoicesPage() {
                   {invoice.notes && (
                     <p className="text-sm text-[color:var(--text-secondary)]">{invoice.notes}</p>
                   )}
+                  {invoice.bankDetails && (
+                    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/70 px-4 py-3 text-xs text-[color:var(--text-secondary)]">
+                      <p className="font-semibold text-[color:var(--text-primary)]">Datos bancarios</p>
+                      <pre className="mt-2 whitespace-pre-wrap font-sans text-[color:var(--text-secondary)]">
+                        {invoice.bankDetails}
+                      </pre>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      onClick={() => openComposerForInvoice(invoice.id)}
+                      className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--text-primary)]"
+                    >
+                      Editar
+                    </button>
                     <button
                       onClick={() => updateInvoiceStatus(invoice.id, "sent")}
                       className="rounded-full border border-[color:var(--border-subtle)] px-3 py-2 font-semibold text-[color:var(--text-secondary)] transition hover:border-[color:var(--text-primary)]"
@@ -446,15 +564,12 @@ export default function InvoicesPage() {
       </section>
       <Modal
         open={isComposerOpen}
-        onClose={() => {
-          setIsComposerOpen(false);
-          setPreviewUrl(undefined);
-        }}
-        title="Nueva factura"
+        onClose={handleComposerClose}
+        title={editingInvoiceId ? "Editar factura" : "Nueva factura"}
         description="Completa los datos del proyecto, personaliza la plantilla y genera el PDF con QR oficial."
         widthClassName="max-w-4xl"
       >
-        <form onSubmit={handleCreate} className="mt-6 grid gap-6">
+        <form onSubmit={handleSubmit} className="mt-6 grid gap-6">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Proyecto
@@ -480,7 +595,7 @@ export default function InvoicesPage() {
             </label>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Emisión
               <input
@@ -506,6 +621,17 @@ export default function InvoicesPage() {
                 readOnly
                 className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
+            </label>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Número de factura
+              <input
+                value={invoiceNumber}
+                onChange={(event) => setInvoiceNumber(event.target.value)}
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 font-mono text-sm text-[color:var(--text-primary)]"
+              />
+              <span className="text-xs text-[color:var(--text-secondary)]">
+                Sugerido: {nextInvoiceNumber}
+              </span>
             </label>
           </div>
 
@@ -550,7 +676,7 @@ export default function InvoicesPage() {
             </div>
           </details>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Impuestos adicionales
               <input
@@ -566,6 +692,16 @@ export default function InvoicesPage() {
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 rows={2}
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+              Datos bancarios en factura
+              <textarea
+                value={bankDetails}
+                onChange={(event) => setBankDetails(event.target.value)}
+                rows={3}
+                placeholder="Banco, cuenta, CBU/ABA, titular"
                 className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>

@@ -79,6 +79,29 @@ export default function DashboardPage() {
     };
   }, [clients.length, projects.length, invoices.length, payments.length, expenses.length]);
 
+  const invoiceMatrix = useMemo(() => {
+    return invoices.map((invoice) => {
+      const project = projects.find((item) => item.id === invoice.projectId);
+      const client = clients.find((item) => item.id === project?.clientId);
+      const paid = payments
+        .filter((payment) => payment.invoiceId === invoice.id)
+        .reduce((sum, payment) => sum + payment.amount, 0);
+      const pending = Math.max(invoice.total - paid, 0);
+      return {
+        id: invoice.id,
+        number: invoice.number,
+        client: client?.name ?? "Cliente sin nombre",
+        brand: project?.brand ?? "—",
+        project: project?.name ?? invoice.projectId,
+        status: invoice.status,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        total: `${invoice.currency} ${invoice.total.toLocaleString()}`,
+        pending: `${invoice.currency} ${pending.toLocaleString()}`,
+      };
+    });
+  }, [clients, invoices, payments, projects]);
+
   return (
     <div className="grid gap-8">
       <section className="surface">
@@ -104,6 +127,45 @@ export default function DashboardPage() {
           <CountPill label="Invoices" value={totals.invoices} />
           <CountPill label="Pagos" value={totals.pagos} />
           <CountPill label="Gastos" value={totals.gastos} />
+        </div>
+      </section>
+
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Vista consolidada tipo Excel</h2>
+        <p className="text-sm text-[color:var(--text-secondary)]">
+          Recorre rápidamente facturas, proyectos y clientes en columnas compactas. Puedes copiar y pegar esta tabla directamente a un sheet si lo necesitas.
+        </p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full border-separate border-spacing-y-2 text-left text-sm text-[color:var(--text-secondary)]">
+            <thead>
+              <tr className="text-xs uppercase tracking-[0.2em] text-[color:var(--text-secondary)]">
+                <th className="rounded-l-2xl bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Factura</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Cliente</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Marca</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Proyecto</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Estado</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Emitida</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Vence</th>
+                <th className="bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Total</th>
+                <th className="rounded-r-2xl bg-[color:var(--surface-muted)] px-4 py-3 font-semibold">Pendiente</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoiceMatrix.map((row) => (
+                <tr key={row.id} className="rounded-2xl bg-white/80 text-[color:var(--text-primary)] shadow-sm">
+                  <td className="rounded-l-2xl px-4 py-3 font-mono text-xs">{row.number}</td>
+                  <td className="px-4 py-3">{row.client}</td>
+                  <td className="px-4 py-3">{row.brand}</td>
+                  <td className="px-4 py-3">{row.project}</td>
+                  <td className="px-4 py-3 capitalize">{row.status}</td>
+                  <td className="px-4 py-3">{row.issueDate}</td>
+                  <td className="px-4 py-3">{row.dueDate}</td>
+                  <td className="px-4 py-3">{row.total}</td>
+                  <td className="rounded-r-2xl px-4 py-3">{row.pending}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
