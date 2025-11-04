@@ -9,17 +9,41 @@ import { useData } from "@/context/data-context";
 import { useTheme } from "@/context/theme-context";
 
 const navigation = [
-  { href: "/dashboard", label: "Dashboard", roles: ["owner", "collaborator"] },
-  { href: "/clients", label: "Clientes", roles: ["owner"] },
-  { href: "/projects", label: "Proyectos", roles: ["owner", "collaborator"] },
-  { href: "/invoices", label: "Invoices", roles: ["owner"] },
-  { href: "/payments", label: "Pagos", roles: ["owner", "collaborator"] },
-  { href: "/expenses", label: "Gastos", roles: ["owner", "collaborator"] },
-  { href: "/adjustments", label: "Notas y ajustes", roles: ["owner"] },
-  { href: "/reports", label: "Reportes", roles: ["owner", "collaborator"] },
-  { href: "/import", label: "Importador CSV", roles: ["owner"] },
-  { href: "/settings", label: "Configuración", roles: ["owner"] },
-  { href: "/profile", label: "Mi perfil", roles: ["owner", "collaborator"] },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    roles: ["admin", "owner", "collaborator"],
+  },
+  { href: "/clients", label: "Clientes", roles: ["admin", "owner"] },
+  {
+    href: "/projects",
+    label: "Proyectos",
+    roles: ["admin", "owner", "collaborator"],
+  },
+  { href: "/invoices", label: "Invoices", roles: ["admin", "owner"] },
+  {
+    href: "/payments",
+    label: "Pagos",
+    roles: ["admin", "owner", "collaborator"],
+  },
+  {
+    href: "/expenses",
+    label: "Gastos",
+    roles: ["admin", "owner", "collaborator"],
+  },
+  { href: "/adjustments", label: "Notas y ajustes", roles: ["admin", "owner"] },
+  {
+    href: "/reports",
+    label: "Reportes",
+    roles: ["admin", "owner", "collaborator"],
+  },
+  { href: "/import", label: "Importador CSV", roles: ["admin", "owner"] },
+  { href: "/settings", label: "Configuración", roles: ["admin", "owner"] },
+  {
+    href: "/profile",
+    label: "Mi perfil",
+    roles: ["admin", "owner", "collaborator"],
+  },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -99,7 +123,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   : "border-slate-200 text-slate-600"
               }`}
             >
-              {user.role === "owner" ? "Zona admin" : "Colaborador"}
+              {user.role === "collaborator"
+                ? "Colaborador"
+                : user.role === "owner"
+                  ? "Zona owner"
+                  : "Administrador"}
             </span>
             <span
               className={`hidden sm:inline-flex text-xs ${

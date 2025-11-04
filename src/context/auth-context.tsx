@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-export type UserRole = "owner" | "collaborator";
+export type UserRole = "admin" | "owner" | "collaborator";
 
 export type User = {
   id: string;
@@ -54,6 +54,17 @@ const USERS_STORAGE_KEY = "monte-auth-users";
 type StoredUser = User & { password: string };
 
 const defaultUsers: StoredUser[] = [
+  {
+    id: "admin-monte",
+    name: "Monte Admin",
+    email: "admin@monteanimation.com",
+    role: "admin",
+    timezone: "America/Argentina/Buenos_Aires",
+    preferredCurrency: "USD",
+    locale: "es-AR",
+    notifications: { email: true, slack: true },
+    password: "admin123",
+  },
   {
     id: "owner-milo",
     name: "Milo",
@@ -210,9 +221,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithGoogle = useCallback(async (email: string) => {
     const normalizedEmail = email.toLowerCase();
-    const googleRole: UserRole = normalizedEmail === "milo@monteanimation.com"
-      ? "owner"
-      : "collaborator";
+    let googleRole: UserRole = "collaborator";
+    if (normalizedEmail === "admin@monteanimation.com") {
+      googleRole = "admin";
+    } else if (normalizedEmail === "milo@monteanimation.com") {
+      googleRole = "owner";
+    }
     const existing = loadUsers().find(
       (stored) => stored.email.toLowerCase() === normalizedEmail,
     );
@@ -230,7 +244,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       timezone: "America/Argentina/Buenos_Aires",
       preferredCurrency: "USD",
       locale: "es-AR",
-      notifications: { email: true, slack: googleRole === "owner" },
+      notifications: {
+        email: true,
+        slack: googleRole === "owner" || googleRole === "admin",
+      },
       password: crypto.randomUUID(),
     };
     const safeUser = sanitizeUser(newUser);
@@ -261,8 +278,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (existing) {
       throw new Error("Ya existe un usuario con ese email.");
     }
-    if (role === "owner" && loadUsers().some((stored) => stored.role === "owner")) {
-      throw new Error("Solo puede existir un owner. Registra este usuario como colaborador.");
+    if (
+      (role === "owner" && loadUsers().some((stored) => stored.role === "owner")) ||
+      (role === "admin" && loadUsers().some((stored) => stored.role === "admin"))
+    ) {
+      throw new Error(
+        role === "admin"
+          ? "Solo puede existir un administrador. Registra este usuario como colaborador."
+          : "Solo puede existir un owner. Registra este usuario como colaborador.",
+      );
     }
     const newUser: StoredUser = {
       id: crypto.randomUUID(),
@@ -272,7 +296,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       timezone,
       preferredCurrency,
       locale: "es-AR",
-      notifications: { email: true, slack: role === "owner" },
+      notifications: {
+        email: true,
+        slack: role === "owner" || role === "admin",
+      },
       password,
     };
     syncUsers((prev) => [...prev, newUser]);

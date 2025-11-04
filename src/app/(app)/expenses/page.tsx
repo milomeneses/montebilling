@@ -19,7 +19,7 @@ export default function ExpensesPage() {
   const { expenses, addExpense, toggleExpenseApproval, projects } = useData();
 
   const filteredExpenses = useMemo(() => {
-    if (user?.role === "owner") return expenses;
+    if (user && user.role !== "collaborator") return expenses;
     if (!user) return [];
     return expenses.filter((expense) => expense.userId === user.id);
   }, [expenses, user]);
@@ -66,7 +66,7 @@ export default function ExpensesPage() {
       amount,
       currency,
       receiptUrl,
-      approved: user.role === "owner",
+      approved: user.role !== "collaborator",
       date,
     });
     event.currentTarget.reset();
@@ -230,7 +230,7 @@ export default function ExpensesPage() {
                   >
                     {expense.approved ? "Aprobado" : "Pendiente"}
                   </span>
-                  {user?.role === "owner" && (
+                  {user && user.role !== "collaborator" && (
                     <button
                       onClick={() => toggleExpenseApproval(expense.id)}
                       className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-emerald-400"

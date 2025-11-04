@@ -25,7 +25,7 @@ export default function ProjectsPage() {
   const [allocations, setAllocations] = useState<AllocationForm[]>(defaultAllocations);
 
   const visibleProjects = useMemo(() => {
-    if (user?.role === "owner") return projects;
+    if (user && user.role !== "collaborator") return projects;
     if (!user) return [];
     return projects.filter((project) =>
       project.allocations.some((allocation) =>
@@ -119,7 +119,7 @@ export default function ProjectsPage() {
         </div>
       </section>
 
-      {user?.role === "owner" && (
+      {user && user.role !== "collaborator" && (
         <section className="surface">
           <form onSubmit={handleCreate} className="grid gap-6">
             <div className="flex items-center justify-between">

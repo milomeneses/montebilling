@@ -18,12 +18,12 @@ export default function AdjustmentsPage() {
   const { user } = useAuth();
   const { adjustments, addAdjustment } = useData();
 
-  if (user?.role !== "owner") {
+  if (!user || user.role === "collaborator") {
     return (
       <section className="surface">
         <h1 className="text-2xl font-semibold text-[color:var(--text-primary)]">Notas y ajustes</h1>
         <p className="text-sm text-[color:var(--text-secondary)] max-w-xl">
-          Solo los owners pueden crear asientos contables internos entre cuentas.
+          Solo la administración puede crear asientos contables internos entre cuentas.
         </p>
       </section>
     );

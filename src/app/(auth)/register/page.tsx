@@ -79,7 +79,8 @@ export default function RegisterPage() {
           name="role"
           className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-400"
         >
-          <option value="owner">Owner / Admin</option>
+          <option value="admin">Administrador</option>
+          <option value="owner">Owner</option>
           <option value="collaborator">Colaborador</option>
         </select>
       </label>

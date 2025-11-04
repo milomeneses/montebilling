@@ -49,7 +49,7 @@ export default function ReportsPage() {
   } = useData();
 
   const selectedInvoices = useMemo(() => {
-    if (user?.role === "owner") return invoices;
+    if (user && user.role !== "collaborator") return invoices;
     if (!user) return [];
     return invoices.filter((invoice) =>
       projects

@@ -92,12 +92,12 @@ export default function InvoicesPage() {
   const verificationBase =
     typeof window !== "undefined" ? window.location.origin : "https://billing.monteanimation.com";
 
-  if (user?.role !== "owner") {
+  if (!user || user.role === "collaborator") {
     return (
       <section className="surface">
         <h1 className="text-2xl font-semibold text-[color:var(--text-primary)]">Facturación</h1>
         <p className="text-sm text-[color:var(--text-secondary)]">
-          Los colaboradores pueden revisar pagos asignados pero no emitir facturas. Solicita apoyo al owner Milo para enviar la factura correspondiente.
+          Los colaboradores pueden revisar pagos asignados pero no emitir facturas. Solicita apoyo al administrador de Monte para enviar la factura correspondiente.
         </p>
       </section>
     );
