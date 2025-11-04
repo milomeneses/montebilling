@@ -5,6 +5,15 @@ import { FormEvent, useMemo } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useData } from "@/context/data-context";
 
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/90 p-4 text-center">
+      <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--text-secondary)]">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-[color:var(--text-primary)]">{value}</p>
+    </div>
+  );
+}
+
 export default function ExpensesPage() {
   const { user } = useAuth();
   const { expenses, addExpense, toggleExpenseApproval, projects } = useData();
@@ -14,6 +23,29 @@ export default function ExpensesPage() {
     if (!user) return [];
     return expenses.filter((expense) => expense.userId === user.id);
   }, [expenses, user]);
+
+  const summary = useMemo(() => {
+    if (filteredExpenses.length === 0) {
+      return {
+        totalsLabel: "Sin gastos",
+        approvedLabel: "0 aprobados",
+        pendingLabel: "0 pendientes",
+      };
+    }
+    const totals = filteredExpenses.reduce<Record<string, number>>((acc, expense) => {
+      acc[expense.currency] = (acc[expense.currency] ?? 0) + expense.amount;
+      return acc;
+    }, {});
+    const totalsLabel = Object.entries(totals)
+      .map(([currency, value]) => `${currency} ${value.toLocaleString()}`)
+      .join(" · ");
+    const approved = filteredExpenses.filter((expense) => expense.approved).length;
+    return {
+      totalsLabel,
+      approvedLabel: `${approved} aprobados`,
+      pendingLabel: `${filteredExpenses.length - approved} pendientes`,
+    };
+  }, [filteredExpenses]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,26 +74,37 @@ export default function ExpensesPage() {
 
   return (
     <div className="grid gap-8">
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Gastos</h1>
-            <p className="text-sm text-slate-300">
+      <section className="surface">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="grid gap-2">
+            <h1 className="text-3xl font-semibold text-[color:var(--text-primary)]">Gastos</h1>
+            <p className="text-sm text-[color:var(--text-secondary)] max-w-2xl">
               Controla gastos facturables y no facturables con adjuntos y aprobación del admin.
             </p>
           </div>
-          <span className="rounded-full border border-slate-700 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
-            {filteredExpenses.length} registros
-          </span>
+          <div className="tag">{filteredExpenses.length} registros</div>
         </div>
+        <div className="surface-muted mt-6 grid gap-3 md:grid-cols-3">
+          <SummaryCard label="Total declarado" value={summary.totalsLabel} />
+          <SummaryCard label="Aprobados" value={summary.approvedLabel} />
+          <SummaryCard label="Pendientes" value={summary.pendingLabel} />
+        </div>
+      </section>
 
-        <form onSubmit={handleSubmit} className="grid gap-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+      <section className="surface">
+        <form onSubmit={handleSubmit} className="grid gap-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Registrar gasto</h2>
+            <p className="text-xs text-[color:var(--text-secondary)]">
+              Completa los campos y adjunta el enlace del comprobante si aplica.
+            </p>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Proyecto (opcional)
               <select
                 name="projectId"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               >
                 <option value="">Sin proyecto</option>
                 {projects.map((project) => (
@@ -71,50 +114,51 @@ export default function ExpensesPage() {
                 ))}
               </select>
             </label>
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Fecha
               <input
                 name="date"
                 type="date"
                 defaultValue={new Date().toISOString().slice(0, 10)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>
           </div>
 
-          <label className="grid gap-1 text-xs text-slate-400">
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
             Descripción
             <input
               name="description"
               required
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
             />
           </label>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Categoría
               <input
                 name="category"
-                defaultValue="Operativo"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Monto
               <input
                 name="amount"
                 type="number"
-                required
                 step="0.01"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                min={0}
+                required
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               />
             </label>
-            <label className="grid gap-1 text-xs text-slate-400">
+            <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
               Moneda
               <select
                 name="currency"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
               >
                 <option value="USD">USD</option>
                 <option value="ARS">ARS</option>
@@ -123,55 +167,48 @@ export default function ExpensesPage() {
             </label>
           </div>
 
-          <label className="grid gap-1 text-xs text-slate-400">
-            Enlace del comprobante
+          <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
+            Enlace del comprobante (opcional)
             <input
               name="receiptUrl"
-              placeholder="https://drive.google.com/..."
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              type="url"
+              placeholder="https://..."
+              className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
             />
           </label>
 
           <button
             type="submit"
-            className="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
+            className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
           >
-            Registrar gasto
+            Guardar gasto
           </button>
         </form>
       </section>
 
-      <section className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
-        <h2 className="text-lg font-semibold">Historial</h2>
-        <div className="grid gap-4">
+      <section className="surface">
+        <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Historial</h2>
+        <div className="mt-4 grid gap-4">
           {filteredExpenses.map((expense) => {
-            const project = projects.find((project) => project.id === expense.projectId);
+            const project = expense.projectId
+              ? projects.find((item) => item.id === expense.projectId)?.name
+              : "Sin proyecto";
             return (
               <article
                 key={expense.id}
-                className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+                className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-100">{expense.description}</h3>
-                    <p className="text-xs text-slate-400">
-                      {project?.name ?? "Sin proyecto"} · {expense.category}
-                    </p>
+                  <div className="grid gap-1">
+                    <h3 className="text-base font-semibold text-[color:var(--text-primary)]">{expense.description}</h3>
+                    <p className="text-xs text-[color:var(--text-secondary)]">{project}</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                    <span className="rounded-full border border-slate-700 px-3 py-1">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                    <span className="tag">
                       {expense.currency} {expense.amount.toLocaleString()}
                     </span>
-                    <span className="rounded-full border border-slate-700 px-3 py-1">{expense.date}</span>
-                    <span
-                      className={`rounded-full border px-3 py-1 ${
-                        expense.approved
-                          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
-                          : "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                      }`}
-                    >
-                      {expense.approved ? "Aprobado" : "Pendiente"}
-                    </span>
+                    <span className="tag">{expense.category}</span>
+                    <span className="tag">{expense.date}</span>
                   </div>
                 </div>
                 {expense.receiptUrl && (
@@ -179,22 +216,37 @@ export default function ExpensesPage() {
                     href={expense.receiptUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-xs text-emerald-300 hover:underline"
+                    className="text-sm text-emerald-600 underline"
                   >
                     Ver comprobante
                   </a>
                 )}
-                {user?.role === "owner" && (
-                  <button
-                    onClick={() => toggleExpenseApproval(expense.id)}
-                    className="w-max rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-emerald-400"
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className={`rounded-full px-4 py-1 text-xs font-semibold ${
+                    expense.approved
+                      ? "border border-emerald-400/60 bg-emerald-50 text-emerald-600"
+                      : "border border-amber-400/60 bg-amber-50 text-amber-600"
+                  }`}
                   >
-                    Alternar aprobación
-                  </button>
-                )}
+                    {expense.approved ? "Aprobado" : "Pendiente"}
+                  </span>
+                  {user?.role === "owner" && (
+                    <button
+                      onClick={() => toggleExpenseApproval(expense.id)}
+                      className="rounded-full border border-[color:var(--border-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--text-secondary)] hover:border-emerald-400"
+                    >
+                      {expense.approved ? "Revertir" : "Aprobar"}
+                    </button>
+                  )}
+                </div>
               </article>
             );
           })}
+          {filteredExpenses.length === 0 && (
+            <div className="surface-strong text-sm text-[color:var(--text-secondary)]">
+              Todavía no registraste gastos.
+            </div>
+          )}
         </div>
       </section>
     </div>

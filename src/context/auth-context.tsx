@@ -53,7 +53,7 @@ const USERS_STORAGE_KEY = "monte-auth-users";
 
 type StoredUser = User & { password: string };
 
-const defaultOwners: StoredUser[] = [
+const defaultUsers: StoredUser[] = [
   {
     id: "owner-milo",
     name: "Milo",
@@ -66,12 +66,34 @@ const defaultOwners: StoredUser[] = [
     password: "monte123",
   },
   {
-    id: "owner-sergio",
+    id: "collab-sergio",
     name: "Sergio",
     email: "sergio@monteanimation.com",
-    role: "owner",
-    timezone: "America/Argentina/Buenos_Aires",
+    role: "collaborator",
+    timezone: "America/Mexico_City",
     preferredCurrency: "USD",
+    locale: "es-MX",
+    notifications: { email: true, slack: true },
+    password: "monte123",
+  },
+  {
+    id: "collab-camila",
+    name: "Camila",
+    email: "camila@monteanimation.com",
+    role: "collaborator",
+    timezone: "America/Bogota",
+    preferredCurrency: "COP",
+    locale: "es-CO",
+    notifications: { email: true, slack: false },
+    password: "monte123",
+  },
+  {
+    id: "collab-julian",
+    name: "Julián",
+    email: "julian@monteanimation.com",
+    role: "collaborator",
+    timezone: "America/Argentina/Buenos_Aires",
+    preferredCurrency: "ARS",
     locale: "es-AR",
     notifications: { email: true, slack: true },
     password: "monte123",
@@ -86,29 +108,29 @@ function sanitizeUser(stored: StoredUser): User {
 
 function loadUsers(): StoredUser[] {
   if (typeof window === "undefined") {
-    return defaultOwners;
+    return defaultUsers;
   }
   const stored = window.localStorage.getItem(USERS_STORAGE_KEY);
   if (!stored) {
     window.localStorage.setItem(
       USERS_STORAGE_KEY,
-      JSON.stringify(defaultOwners),
+      JSON.stringify(defaultUsers),
     );
-    return defaultOwners;
+    return defaultUsers;
   }
   try {
     const parsed = JSON.parse(stored) as StoredUser[];
     if (parsed.length === 0) {
       window.localStorage.setItem(
         USERS_STORAGE_KEY,
-        JSON.stringify(defaultOwners),
+        JSON.stringify(defaultUsers),
       );
-      return defaultOwners;
+      return defaultUsers;
     }
     return parsed;
   } catch (error) {
     console.error("Failed to parse stored users", error);
-    return defaultOwners;
+    return defaultUsers;
   }
 }
 
@@ -128,7 +150,7 @@ function persistAuthUser(user: User | null) {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<StoredUser[]>(defaultOwners);
+  const [users, setUsers] = useState<StoredUser[]>(defaultUsers);
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
@@ -187,10 +209,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [users, syncUsers]);
 
   const loginWithGoogle = useCallback(async (email: string) => {
-    const googleRole: UserRole = email.endsWith("@monteanimation.com")
+    const normalizedEmail = email.toLowerCase();
+    const googleRole: UserRole = normalizedEmail === "milo@monteanimation.com"
       ? "owner"
       : "collaborator";
-    const normalizedEmail = email.toLowerCase();
     const existing = loadUsers().find(
       (stored) => stored.email.toLowerCase() === normalizedEmail,
     );
@@ -238,6 +260,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
     if (existing) {
       throw new Error("Ya existe un usuario con ese email.");
+    }
+    if (role === "owner" && loadUsers().some((stored) => stored.role === "owner")) {
+      throw new Error("Solo puede existir un owner. Registra este usuario como colaborador.");
     }
     const newUser: StoredUser = {
       id: crypto.randomUUID(),

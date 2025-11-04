@@ -45,6 +45,19 @@ type Project = {
 
 type InvoiceStatus = "draft" | "sent" | "partial" | "paid" | "void";
 
+type InvoiceBranding = {
+  accentColor: string;
+  headerText?: string;
+  footerText?: string;
+  logoDataUrl?: string;
+};
+
+type InvoiceLineItem = {
+  id: string;
+  description: string;
+  amount: number;
+};
+
 type Invoice = {
   id: string;
   projectId: string;
@@ -58,6 +71,9 @@ type Invoice = {
   status: InvoiceStatus;
   notes?: string;
   attachments?: string[];
+  lineItems: InvoiceLineItem[];
+  branding: InvoiceBranding;
+  verificationUrl: string;
 };
 
 type Payment = {
@@ -124,6 +140,37 @@ type MonteDataState = {
   balances: Record<string, number>;
   exchangeRates: ExchangeRate[];
   nextInvoiceSequence: number;
+  integrations: IntegrationSettings;
+};
+
+type IntegrationSettings = {
+  googleOAuth: {
+    enabled: boolean;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    lastSynced?: string;
+  };
+  slack: {
+    enabled: boolean;
+    webhookUrl: string;
+    channel: string;
+    lastNotification?: string;
+  };
+  drive: {
+    enabled: boolean;
+    folderId: string;
+    serviceAccount: string;
+    lastExport?: string;
+  };
+  email: {
+    enabled: boolean;
+    provider: "resend" | "smtp";
+    fromEmail: string;
+    apiKey?: string;
+    smtpHost?: string;
+    smtpPort?: number;
+  };
 };
 
 type CsvRow = Record<string, string> & { type: string };
@@ -135,7 +182,12 @@ type DataContextValue = MonteDataState & {
   addProject: (input: Omit<Project, "id">) => void;
   updateProject: (id: string, input: Partial<Omit<Project, "id" | "allocations">> & { allocations?: Allocation[] }) => void;
   deleteProject: (id: string) => void;
-  createInvoice: (input: Omit<Invoice, "id" | "number" | "status"> & { status?: InvoiceStatus }) => Invoice;
+  createInvoice: (
+    input: Omit<Invoice, "id" | "number" | "status" | "verificationUrl"> & {
+      status?: InvoiceStatus;
+      verificationUrl?: string;
+    },
+  ) => Invoice;
   updateInvoiceStatus: (id: string, status: InvoiceStatus) => void;
   recordPayment: (input: Omit<Payment, "id" | "pettyContribution" | "splits" | "exchangeRate"> & { exchangeRate?: number }) => Payment;
   addExpense: (input: Omit<Expense, "id">) => void;
@@ -144,11 +196,15 @@ type DataContextValue = MonteDataState & {
   updatePettyCashRule: (rule: Pick<PettyCashRule, "ruleType" | "value">) => void;
   addExchangeRate: (input: Omit<ExchangeRate, "id">) => void;
   importFromCsv: (rows: CsvRow[]) => { summary: string; imported: number };
+  updateIntegrations: (key: keyof IntegrationSettings, input: Partial<IntegrationSettings[typeof key]>) => void;
 };
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "monte-data-state";
+
+const today = new Date();
+const iso = (date: Date) => date.toISOString().slice(0, 10);
 
 const defaultState: MonteDataState = {
   clients: [
@@ -166,6 +222,13 @@ const defaultState: MonteDataState = {
       currency: "ARS",
       notes: "Facturación mensual con impuestos locales",
     },
+    {
+      id: "client-indigo",
+      name: "Indigo Post",
+      contactEmail: "ap@indigopost.tv",
+      currency: "USD",
+      notes: "Servicios de finishing remoto",
+    },
   ],
   projects: [
     {
@@ -174,7 +237,7 @@ const defaultState: MonteDataState = {
       name: "Campaña Winston 2024",
       description: "Spots animados para campaña global",
       status: "wip",
-      startDate: new Date().toISOString().slice(0, 10),
+      startDate: iso(today),
       endDate: "",
       budget: 45000,
       currency: "USD",
@@ -189,13 +252,13 @@ const defaultState: MonteDataState = {
           id: "alloc-sergio",
           name: "Sergio",
           role: "sergio",
-          percentage: 40,
+          percentage: 35,
         },
         {
-          id: "alloc-colab",
-          name: "Colaboradores",
+          id: "alloc-camila",
+          name: "Camila",
           role: "collaborator",
-          percentage: 20,
+          percentage: 25,
         },
       ],
     },
@@ -205,7 +268,7 @@ const defaultState: MonteDataState = {
       name: "Spot streaming regional",
       description: "Localización LATAM",
       status: "planning",
-      startDate: new Date().toISOString().slice(0, 10),
+      startDate: iso(today),
       endDate: "",
       budget: 12000000,
       currency: "ARS",
@@ -214,7 +277,7 @@ const defaultState: MonteDataState = {
           id: "alloc-milo-2",
           name: "Milo",
           role: "milo",
-          percentage: 50,
+          percentage: 45,
         },
         {
           id: "alloc-sergio-2",
@@ -223,10 +286,41 @@ const defaultState: MonteDataState = {
           percentage: 30,
         },
         {
-          id: "alloc-colab-2",
-          name: "Freelancers",
+          id: "alloc-julian",
+          name: "Julián",
           role: "collaborator",
-          percentage: 20,
+          percentage: 25,
+        },
+      ],
+    },
+    {
+      id: "project-gig-3",
+      clientId: "client-indigo",
+      name: "Series Indigo Post",
+      description: "Finalización de episodios",
+      status: "done",
+      startDate: iso(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate() - 3)),
+      endDate: iso(today),
+      budget: 22000,
+      currency: "USD",
+      allocations: [
+        {
+          id: "alloc-milo-3",
+          name: "Milo",
+          role: "milo",
+          percentage: 35,
+        },
+        {
+          id: "alloc-camila-3",
+          name: "Camila",
+          role: "collaborator",
+          percentage: 30,
+        },
+        {
+          id: "alloc-julian-3",
+          name: "Julián",
+          role: "collaborator",
+          percentage: 35,
         },
       ],
     },
@@ -236,19 +330,110 @@ const defaultState: MonteDataState = {
       id: "invoice-1",
       projectId: "project-gig-1",
       number: "MONTE-0001",
-      issueDate: new Date().toISOString().slice(0, 10),
-      dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30)
-        .toISOString()
-        .slice(0, 10),
+      issueDate: iso(today),
+      dueDate: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 25)),
       subtotal: 15000,
       taxes: 3150,
       total: 18150,
       currency: "USD",
-      status: "sent",
-      notes: "Primer milestone",
+      status: "partial",
+      notes: "Primer milestone entregado",
+      lineItems: [
+        { id: "li-1", description: "Storyboard y arte", amount: 9000 },
+        { id: "li-2", description: "Animación 2D", amount: 6000 },
+      ],
+      branding: {
+        accentColor: "#10b981",
+        headerText: "Monte Animation — Factura oficial",
+        footerText: "Gracias por elegirnos. Pagos vía transferencia internacional.",
+      },
+      verificationUrl: "https://billing.monteanimation.com/verify/invoice-1",
+    },
+    {
+      id: "invoice-2",
+      projectId: "project-gig-2",
+      number: "MONTE-0002",
+      issueDate: iso(new Date(today.getFullYear(), today.getMonth(), 1)),
+      dueDate: iso(new Date(today.getFullYear(), today.getMonth(), 30)),
+      subtotal: 7500000,
+      taxes: 1575000,
+      total: 9075000,
+      currency: "ARS",
+      status: "draft",
+      notes: "Pendiente de aprobación impositiva",
+      lineItems: [
+        { id: "li-3", description: "Producción local", amount: 5200000 },
+        { id: "li-4", description: "Localización de audio", amount: 2300000 },
+      ],
+      branding: {
+        accentColor: "#6366f1",
+        headerText: "Factura provisional",
+        footerText: "Se emitirá versión final con retenciones aplicadas.",
+      },
+      verificationUrl: "https://billing.monteanimation.com/verify/invoice-2",
+    },
+    {
+      id: "invoice-3",
+      projectId: "project-gig-3",
+      number: "MONTE-0003",
+      issueDate: iso(new Date(today.getFullYear(), today.getMonth() - 1, 15)),
+      dueDate: iso(new Date(today.getFullYear(), today.getMonth() - 1, 30)),
+      subtotal: 7800,
+      taxes: 702,
+      total: 8502,
+      currency: "USD",
+      status: "paid",
+      notes: "Proyecto finalizado",
+      lineItems: [
+        { id: "li-5", description: "Composición y finishing", amount: 4800 },
+        { id: "li-6", description: "Corrección de color", amount: 3000 },
+      ],
+      branding: {
+        accentColor: "#0ea5e9",
+        headerText: "Factura final",
+        footerText: "Incluye acceso a archivos maestros en Drive.",
+      },
+      verificationUrl: "https://billing.monteanimation.com/verify/invoice-3",
     },
   ],
-  payments: [],
+  payments: [
+    {
+      id: "payment-1",
+      invoiceId: "invoice-1",
+      projectId: "project-gig-1",
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7)),
+      amount: 12000,
+      currency: "USD",
+      method: "Wire transfer",
+      exchangeRate: 1,
+      createdBy: "owner-milo",
+      appliedTo: "Primer hito",
+      pettyContribution: 1200,
+      splits: [
+        { allocationId: "alloc-milo", name: "Milo", amount: 4320 },
+        { allocationId: "alloc-sergio", name: "Sergio", amount: 3780 },
+        { allocationId: "alloc-camila", name: "Camila", amount: 2700 },
+      ],
+    },
+    {
+      id: "payment-2",
+      invoiceId: "invoice-3",
+      projectId: "project-gig-3",
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2)),
+      amount: 8502,
+      currency: "USD",
+      method: "Transferencia",
+      exchangeRate: 1,
+      createdBy: "owner-milo",
+      appliedTo: "Pago final",
+      pettyContribution: 850.2,
+      splits: [
+        { allocationId: "alloc-milo-3", name: "Milo", amount: 2678.13 },
+        { allocationId: "alloc-camila-3", name: "Camila", amount: 2295.54 },
+        { allocationId: "alloc-julian-3", name: "Julián", amount: 2678.13 },
+      ],
+    },
+  ],
   expenses: [
     {
       id: "expense-1",
@@ -259,7 +444,29 @@ const defaultState: MonteDataState = {
       amount: 1200,
       currency: "USD",
       approved: true,
-      date: new Date().toISOString().slice(0, 10),
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 5)),
+    },
+    {
+      id: "expense-2",
+      projectId: "project-gig-2",
+      userId: "collab-julian",
+      description: "Traducción de guiones",
+      category: "Servicios",
+      amount: 185000,
+      currency: "ARS",
+      approved: false,
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 3)),
+    },
+    {
+      id: "expense-3",
+      projectId: undefined,
+      userId: "collab-camila",
+      description: "Suscripción Frame.io",
+      category: "Software",
+      amount: 65,
+      currency: "USD",
+      approved: true,
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)),
     },
   ],
   adjustments: [
@@ -271,37 +478,77 @@ const defaultState: MonteDataState = {
       currency: "USD",
       category: "Reintegro",
       note: "Reintegro gastos comunes",
-      date: new Date().toISOString().slice(0, 10),
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)),
+    },
+    {
+      id: "adj-2",
+      from: "Fondo Monte",
+      to: "Camila",
+      amount: 200,
+      currency: "USD",
+      category: "Adelanto",
+      note: "Adelanto para hardware",
+      date: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2)),
     },
   ],
   pettyCash: {
     ruleType: "percent",
     value: 10,
-    balance: 2500,
+    balance: 4550.2,
   },
   balances: {
-    Milo: 0,
-    Sergio: 0,
-    "Colaboradores": 0,
-    "Fondo Monte": 2500,
+    Milo: 6998.13,
+    Sergio: 4317,
+    Camila: 2995.54,
+    "Julián": 2678.13,
+    "Fondo Monte": 4550.2,
   },
   exchangeRates: [
     {
       id: "rate-ars",
-      date: new Date().toISOString().slice(0, 10),
+      date: iso(today),
       fromCurrency: "ARS",
       toCurrency: "USD",
       rate: 0.0011,
     },
     {
       id: "rate-cop",
-      date: new Date().toISOString().slice(0, 10),
+      date: iso(today),
       fromCurrency: "COP",
       toCurrency: "USD",
       rate: 0.00026,
     },
   ],
-  nextInvoiceSequence: 2,
+  nextInvoiceSequence: 4,
+  integrations: {
+    googleOAuth: {
+      enabled: true,
+      clientId: "demo-google-client-id.apps.googleusercontent.com",
+      clientSecret: "demo-google-secret",
+      redirectUri: "https://billing.monteanimation.com/api/auth/callback/google",
+      lastSynced: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)),
+    },
+    slack: {
+      enabled: true,
+      webhookUrl: "https://hooks.slack.com/services/demo/demo/demo",
+      channel: "#finanzas",
+      lastNotification: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2)),
+    },
+    drive: {
+      enabled: true,
+      folderId: "1a2b3c4d5e6f",
+      serviceAccount: "monte-billing@service-account.iam.gserviceaccount.com",
+      lastExport: iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7)),
+    },
+    email: {
+      enabled: true,
+      provider: "resend",
+      fromEmail: "finanzas@monteanimation.com",
+      apiKey: "re_demo_api_key",
+      smtpHost: "",
+      smtpPort: undefined,
+    },
+  },
 };
 
 function cloneState(state: MonteDataState): MonteDataState {
@@ -312,7 +559,11 @@ function cloneState(state: MonteDataState): MonteDataState {
       ...project,
       allocations: project.allocations.map((allocation) => ({ ...allocation })),
     })),
-    invoices: state.invoices.map((invoice) => ({ ...invoice })),
+    invoices: state.invoices.map((invoice) => ({
+      ...invoice,
+      lineItems: invoice.lineItems.map((item) => ({ ...item })),
+      branding: { ...invoice.branding },
+    })),
     payments: state.payments.map((payment) => ({
       ...payment,
       splits: payment.splits.map((split) => ({ ...split })),
@@ -322,6 +573,12 @@ function cloneState(state: MonteDataState): MonteDataState {
     pettyCash: { ...state.pettyCash },
     balances: { ...state.balances },
     exchangeRates: state.exchangeRates.map((rate) => ({ ...rate })),
+    integrations: {
+      googleOAuth: { ...state.integrations.googleOAuth },
+      slack: { ...state.integrations.slack },
+      drive: { ...state.integrations.drive },
+      email: { ...state.integrations.email },
+    },
   };
 }
 
@@ -343,6 +600,24 @@ function loadState(): MonteDataState {
       ...defaultState,
       ...parsed,
       balances: { ...defaultState.balances, ...parsed.balances },
+      integrations: {
+        googleOAuth: {
+          ...defaultState.integrations.googleOAuth,
+          ...parsed.integrations?.googleOAuth,
+        },
+        slack: {
+          ...defaultState.integrations.slack,
+          ...parsed.integrations?.slack,
+        },
+        drive: {
+          ...defaultState.integrations.drive,
+          ...parsed.integrations?.drive,
+        },
+        email: {
+          ...defaultState.integrations.email,
+          ...parsed.integrations?.email,
+        },
+      },
     };
   } catch (error) {
     console.error("Failed to parse stored Monte data", error);
@@ -487,13 +762,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const createInvoice = useCallback(
     (
-      input: Omit<Invoice, "id" | "number" | "status"> & {
+      input: Omit<Invoice, "id" | "number" | "status" | "verificationUrl"> & {
         status?: InvoiceStatus;
+        verificationUrl?: string;
       },
     ) => {
+      const generatedId = crypto.randomUUID();
+      const baseBranding: InvoiceBranding = {
+        accentColor: input.branding?.accentColor ?? "#10b981",
+        headerText: input.branding?.headerText ?? "Factura Monte Animation",
+        footerText:
+          input.branding?.footerText ??
+          "Gracias por confiar en Monte Animation. Pago mediante transferencia bancaria.",
+        logoDataUrl: input.branding?.logoDataUrl,
+      };
+      const normalizedLineItems = (input.lineItems ?? []).map((item) => ({
+        ...item,
+        id: item.id || crypto.randomUUID(),
+      }));
+      const defaultVerification =
+        input.verificationUrl ??
+        (typeof window !== "undefined"
+          ? `${window.location.origin}/verify/${generatedId}`
+          : `https://billing.monteanimation.com/verify/${generatedId}`);
       let created: Invoice = {
         ...input,
-        id: crypto.randomUUID(),
+        lineItems: normalizedLineItems,
+        branding: baseBranding,
+        verificationUrl: defaultVerification,
+        id: generatedId,
         number: "",
         status: input.status ?? "draft",
       } as Invoice;
@@ -690,6 +987,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  const updateIntegrations = useCallback(
+    (key: keyof IntegrationSettings, input: Partial<IntegrationSettings[typeof key]>) => {
+      mutate((draft) => {
+        draft.integrations[key] = {
+          ...draft.integrations[key],
+          ...input,
+        } as IntegrationSettings[typeof key];
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
   const importFromCsv = useCallback(
     (rows: CsvRow[]) => {
       let imported = 0;
@@ -726,35 +1036,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 endDate: row.endDate ?? "",
                 budget: Number(row.budget ?? 0),
                 currency: (row.currency as Currency) ?? client.currency,
-                allocations: client.name.includes("Milo")
-                  ? [
-                      {
-                        id: crypto.randomUUID(),
-                        name: "Milo",
-                        role: "milo",
-                        percentage: 50,
-                      },
-                    ]
-                  : [
-                      {
-                        id: crypto.randomUUID(),
-                        name: "Milo",
-                        role: "milo",
-                        percentage: 40,
-                      },
-                      {
-                        id: crypto.randomUUID(),
-                        name: "Sergio",
-                        role: "sergio",
-                        percentage: 40,
-                      },
-                      {
-                        id: crypto.randomUUID(),
-                        name: "Colaboradores",
-                        role: "collaborator",
-                        percentage: 20,
-                      },
-                    ],
+                allocations: [
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Milo",
+                    role: "milo",
+                    percentage: 40,
+                  },
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Sergio",
+                    role: "sergio",
+                    percentage: 35,
+                  },
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Camila",
+                    role: "collaborator",
+                    percentage: 25,
+                  },
+                ],
               });
               imported += 1;
               break;
@@ -766,10 +1067,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
                   (row.project ?? "").toLowerCase(),
               );
               if (!project) break;
+              const invoiceId = crypto.randomUUID();
               const number = `MONTE-${String(draft.nextInvoiceSequence).padStart(4, "0")}`;
               draft.nextInvoiceSequence += 1;
               draft.invoices.push({
-                id: crypto.randomUUID(),
+                id: invoiceId,
                 projectId: project.id,
                 number,
                 issueDate: row.issueDate ?? new Date().toISOString().slice(0, 10),
@@ -784,6 +1086,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 currency: (row.currency as Currency) ?? project.currency,
                 status: (row.status as InvoiceStatus) ?? "draft",
                 notes: row.notes ?? "",
+                lineItems: [
+                  {
+                    id: crypto.randomUUID(),
+                    description: row.description ?? "Concepto importado",
+                    amount: Number(row.subtotal ?? row.total ?? 0),
+                  },
+                ],
+                branding: {
+                  accentColor: (row.accentColor as string) ?? "#10b981",
+                  headerText: row.headerText ?? "Factura Monte Animation",
+                  footerText:
+                    row.footerText ??
+                    "Factura importada desde histórico. Verificar datos antes de enviar.",
+                  logoDataUrl: typeof row.logoDataUrl === "string" ? row.logoDataUrl : undefined,
+                },
+                verificationUrl:
+                  (row.verificationUrl as string) ??
+                  `https://billing.monteanimation.com/verify/${invoiceId}`,
               });
               imported += 1;
               break;
@@ -944,6 +1264,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updatePettyCashRule,
       addExchangeRate,
       importFromCsv,
+      updateIntegrations,
     }),
     [
       state,
@@ -962,6 +1283,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updatePettyCashRule,
       addExchangeRate,
       importFromCsv,
+      updateIntegrations,
     ],
   );
 

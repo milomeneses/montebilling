@@ -31,97 +31,95 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="grid gap-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Mi perfil</h1>
-          <p className="text-sm text-slate-300">
-            Actualiza tus datos de contacto, preferencias y notificaciones.
+    <section className="surface">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="grid gap-2">
+          <h1 className="text-3xl font-semibold text-[color:var(--text-primary)]">Mi perfil</h1>
+          <p className="text-sm text-[color:var(--text-secondary)] max-w-2xl">
+            Actualiza tus datos de contacto, preferencias y notificaciones para que el equipo pueda comunicarse sin fricciones.
           </p>
         </div>
-        <span className="rounded-full border border-slate-700 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
-          Rol: {user.role === "owner" ? "Owner" : "Colaborador"}
-        </span>
+        <span className="tag">Rol · {user.role === "owner" ? "Owner" : "Colaborador"}</span>
       </div>
 
       {message && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <div className="surface-strong mt-6 border-emerald-400/60 text-sm text-[color:var(--text-secondary)]">
           {message}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-1 text-xs text-slate-400">
+      <form onSubmit={handleSubmit} className="mt-6 grid gap-5 md:grid-cols-2">
+        <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
           Nombre completo
           <input
             name="name"
             defaultValue={user.name}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
           />
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
           Teléfono
           <input
             name="phone"
             defaultValue={user.phone ?? ""}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
           />
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
           Zona horaria
           <input
             name="timezone"
             defaultValue={user.timezone}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
           />
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
           Idioma/Locale
           <input
             name="locale"
             defaultValue={user.locale}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
           />
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid gap-2 text-sm text-[color:var(--text-secondary)]">
           Moneda preferida
           <select
             name="preferredCurrency"
             defaultValue={user.preferredCurrency}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
           >
             <option value="USD">USD</option>
             <option value="ARS">ARS</option>
             <option value="COP">COP</option>
           </select>
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="md:col-span-2 grid gap-2 text-sm text-[color:var(--text-secondary)]">
           Información bancaria
           <textarea
             name="bankInfo"
             rows={3}
             defaultValue={user.bankInfo ?? ""}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-primary)]"
           />
         </label>
-        <div className="grid gap-2 text-xs text-slate-400">
-          Notificaciones
-          <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-slate-200">
-            <input type="checkbox" name="notifEmail" defaultChecked={user.notifications.email} />
-            Email
+        <fieldset className="grid gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 text-sm text-[color:var(--text-secondary)]">
+          <legend className="px-2 text-xs uppercase tracking-[0.2em] text-[color:var(--text-secondary)]">Notificaciones</legend>
+          <label className="flex items-center justify-between gap-3">
+            <span>Email</span>
+            <input type="checkbox" name="notifEmail" defaultChecked={user.notifications.email} className="h-4 w-4" />
           </label>
-          <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-slate-200">
-            <input type="checkbox" name="notifSlack" defaultChecked={user.notifications.slack} />
-            Slack
+          <label className="flex items-center justify-between gap-3">
+            <span>Slack</span>
+            <input type="checkbox" name="notifSlack" defaultChecked={user.notifications.slack} className="h-4 w-4" />
           </label>
-        </div>
+        </fieldset>
         <button
           type="submit"
-          className="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
+          className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
         >
           Guardar perfil
         </button>
       </form>
-    </div>
+    </section>
   );
 }
