@@ -39,7 +39,14 @@ export default function ProfilePage() {
             Actualiza tus datos de contacto, preferencias y notificaciones para que el equipo pueda comunicarse sin fricciones.
           </p>
         </div>
-        <span className="tag">Rol · {user.role === "owner" ? "Owner" : "Colaborador"}</span>
+        <span className="tag">
+          Rol ·
+          {user.role === "admin"
+            ? " Administrador"
+            : user.role === "owner"
+              ? " Owner"
+              : " Colaborador"}
+        </span>
       </div>
 
       {message && (

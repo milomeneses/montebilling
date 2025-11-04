@@ -34,7 +34,7 @@ export default function PaymentsPage() {
   );
 
   const visiblePayments = useMemo(() => {
-    if (user?.role === "owner") return payments;
+    if (user && user.role !== "collaborator") return payments;
     if (!user) return [];
     return payments.filter((payment) =>
       payment.splits.some((split) =>
