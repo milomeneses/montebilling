@@ -3,14 +3,61 @@
 import { FormEvent, useState } from "react";
 
 import { useAuth } from "@/context/auth-context";
+import { useData } from "@/context/data-context";
 
 export default function ProfilePage() {
   const { user, updateProfile } = useAuth();
+  const { projects, invoices, payments, exchangeRates } = useData();
   const [message, setMessage] = useState<string | null>(null);
 
   if (!user) {
     return null;
   }
+
+  const getRateToUsd = (currency: string) => {
+    if (currency === "USD") return 1;
+    const match = exchangeRates
+      .filter((rate) => rate.fromCurrency === currency && rate.toCurrency === "USD")
+      .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    return match?.rate ?? 1;
+  };
+
+  const convertToUsd = (amount: number, currency: string) => {
+    if (currency === "USD") return amount;
+    return amount * getRateToUsd(currency);
+  };
+
+  const convertFromUsd = (amount: number, currency: string) => {
+    if (currency === "USD") return amount;
+    const rate = getRateToUsd(currency);
+    return rate === 0 ? amount : amount / rate;
+  };
+
+  const allocationKey = (user.name ?? "").toLowerCase();
+  const pendingUsd = invoices.reduce((total, invoice) => {
+    const project = projects.find((item) => item.id === invoice.projectId);
+    if (!project) return total;
+    const allocation = project.allocations.find(
+      (item) => item.name.toLowerCase() === allocationKey,
+    );
+    if (!allocation) return total;
+    const baseShare = allocation.fixedAmount
+      ? allocation.fixedAmount
+      : ((allocation.percentage ?? 0) / 100) * invoice.total;
+    const shareUsd = convertToUsd(baseShare, invoice.currency);
+    const paidUsd = payments
+      .filter((payment) => payment.invoiceId === invoice.id)
+      .reduce((acc, payment) => {
+        const split = payment.splits.find(
+          (splitItem) => splitItem.name.toLowerCase() === allocationKey,
+        );
+        if (!split) return acc;
+        return acc + convertToUsd(split.amount, payment.currency);
+      }, 0);
+    return total + Math.max(shareUsd - paidUsd, 0);
+  }, 0);
+
+  const pendingPreferred = convertFromUsd(pendingUsd, user.preferredCurrency);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -39,14 +86,27 @@ export default function ProfilePage() {
             Actualiza tus datos de contacto, preferencias y notificaciones para que el equipo pueda comunicarse sin fricciones.
           </p>
         </div>
-        <span className="tag">
-          Rol ·
-          {user.role === "admin"
-            ? " Administrador"
-            : user.role === "owner"
-              ? " Owner"
-              : " Colaborador"}
-        </span>
+        <div className="grid gap-3 text-right">
+          <span className="tag">
+            Rol ·
+            {user.role === "admin"
+              ? " Administrador"
+              : user.role === "owner"
+                ? " Owner"
+                : " Colaborador"}
+          </span>
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-white/80 px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+            <p className="text-xs uppercase tracking-[0.2em]">Pendiente por cobrar</p>
+            <p className="mt-2 text-lg font-semibold text-[color:var(--text-primary)]">
+              USD {pendingUsd.toFixed(2)}
+            </p>
+            {user.preferredCurrency !== "USD" && (
+              <p className="text-xs text-[color:var(--text-secondary)]">
+                {user.preferredCurrency} {pendingPreferred.toFixed(2)}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {message && (

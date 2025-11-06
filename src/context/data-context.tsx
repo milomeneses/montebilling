@@ -34,6 +34,7 @@ type Project = {
   id: string;
   clientId: string;
   name: string;
+  brand?: string;
   description?: string;
   status: ProjectStatus;
   startDate: string;
@@ -74,6 +75,7 @@ type Invoice = {
   lineItems: InvoiceLineItem[];
   branding: InvoiceBranding;
   verificationUrl: string;
+  bankDetails?: string;
 };
 
 type Payment = {
@@ -140,6 +142,9 @@ type MonteDataState = {
   balances: Record<string, number>;
   exchangeRates: ExchangeRate[];
   nextInvoiceSequence: number;
+  invoicePrefix: string;
+  invoiceNumberPadding: number;
+  defaultBankDetails: string;
   integrations: IntegrationSettings;
   appTemplate: AppTemplateSettings;
 };
@@ -192,11 +197,19 @@ type DataContextValue = MonteDataState & {
   updateProject: (id: string, input: Partial<Omit<Project, "id" | "allocations">> & { allocations?: Allocation[] }) => void;
   deleteProject: (id: string) => void;
   createInvoice: (
-    input: Omit<Invoice, "id" | "number" | "status" | "verificationUrl"> & {
+    input: Omit<Invoice, "id" | "status" | "verificationUrl"> & {
+      number?: string;
       status?: InvoiceStatus;
       verificationUrl?: string;
     },
   ) => Invoice;
+  updateInvoice: (
+    id: string,
+    input: Partial<Omit<Invoice, "id">> & {
+      lineItems?: InvoiceLineItem[];
+      branding?: Partial<InvoiceBranding>;
+    },
+  ) => void;
   updateInvoiceStatus: (id: string, status: InvoiceStatus) => void;
   recordPayment: (input: Omit<Payment, "id" | "pettyContribution" | "splits" | "exchangeRate"> & { exchangeRate?: number }) => Payment;
   addExpense: (input: Omit<Expense, "id">) => void;
@@ -208,6 +221,12 @@ type DataContextValue = MonteDataState & {
   updateIntegrations: (key: keyof IntegrationSettings, input: Partial<IntegrationSettings[typeof key]>) => void;
   updateAppTemplate: (input: Partial<AppTemplateSettings>) => void;
   resetAppTemplate: () => void;
+  updateInvoiceNumbering: (input: {
+    prefix?: string;
+    nextSequence?: number;
+    padding?: number;
+  }) => void;
+  updateDefaultBankDetails: (details: string) => void;
 };
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -216,6 +235,12 @@ const STORAGE_KEY = "monte-data-state";
 
 const today = new Date();
 const iso = (date: Date) => date.toISOString().slice(0, 10);
+const defaultBankDetailsText = [
+  "Banco Santander Río",
+  "Cuenta USD: 123-456789/0",
+  "CBU: 0720099876543210000012",
+  "Titular: Monte Animation Studio",
+].join("\n");
 
 const defaultState: MonteDataState = {
   clients: [
@@ -246,6 +271,7 @@ const defaultState: MonteDataState = {
       id: "project-gig-1",
       clientId: "client-winston",
       name: "Campaña Winston 2024",
+      brand: "Winston",
       description: "Spots animados para campaña global",
       status: "wip",
       startDate: iso(today),
@@ -277,6 +303,7 @@ const defaultState: MonteDataState = {
       id: "project-gig-2",
       clientId: "client-latam",
       name: "Spot streaming regional",
+      brand: "Latam",
       description: "Localización LATAM",
       status: "planning",
       startDate: iso(today),
@@ -308,6 +335,7 @@ const defaultState: MonteDataState = {
       id: "project-gig-3",
       clientId: "client-indigo",
       name: "Series Indigo Post",
+      brand: "Indigo",
       description: "Finalización de episodios",
       status: "done",
       startDate: iso(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate() - 3)),
@@ -359,6 +387,7 @@ const defaultState: MonteDataState = {
         footerText: "Gracias por elegirnos. Pagos vía transferencia internacional.",
       },
       verificationUrl: "https://billing.monteanimation.com/verify/invoice-1",
+      bankDetails: defaultBankDetailsText,
     },
     {
       id: "invoice-2",
@@ -382,6 +411,7 @@ const defaultState: MonteDataState = {
         footerText: "Se emitirá versión final con retenciones aplicadas.",
       },
       verificationUrl: "https://billing.monteanimation.com/verify/invoice-2",
+      bankDetails: defaultBankDetailsText,
     },
     {
       id: "invoice-3",
@@ -405,6 +435,7 @@ const defaultState: MonteDataState = {
         footerText: "Incluye acceso a archivos maestros en Drive.",
       },
       verificationUrl: "https://billing.monteanimation.com/verify/invoice-3",
+      bankDetails: defaultBankDetailsText,
     },
   ],
   payments: [
@@ -531,6 +562,9 @@ const defaultState: MonteDataState = {
     },
   ],
   nextInvoiceSequence: 4,
+  invoicePrefix: "MONTE-",
+  invoiceNumberPadding: 4,
+  defaultBankDetails: defaultBankDetailsText,
   integrations: {
     googleOAuth: {
       enabled: true,
@@ -615,7 +649,7 @@ function loadState(): MonteDataState {
   }
   try {
     const parsed = JSON.parse(stored) as MonteDataState;
-    return {
+    const merged: MonteDataState = {
       ...defaultState,
       ...parsed,
       balances: { ...defaultState.balances, ...parsed.balances },
@@ -642,6 +676,12 @@ function loadState(): MonteDataState {
         ...parsed.appTemplate,
       },
     };
+    merged.invoicePrefix = parsed.invoicePrefix ?? defaultState.invoicePrefix;
+    merged.invoiceNumberPadding =
+      parsed.invoiceNumberPadding ?? defaultState.invoiceNumberPadding;
+    merged.defaultBankDetails =
+      parsed.defaultBankDetails ?? defaultState.defaultBankDetails;
+    return merged;
   } catch (error) {
     console.error("Failed to parse stored Monte data", error);
     return defaultState;
@@ -667,6 +707,19 @@ function convertToUsd(
   if (currency === "USD") return amount;
   const rate = explicitRate ?? latestRate(state, currency);
   return amount * rate;
+}
+
+function formatInvoiceNumber(prefix: string, sequence: number, padding: number) {
+  const safePadding = Number.isFinite(padding) && padding > 0 ? padding : 4;
+  return `${prefix ?? ""}${String(sequence).padStart(safePadding, "0")}`;
+}
+
+function resolveVerificationUrl(identifier: string) {
+  const base =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "https://billing.monteanimation.com";
+  return `${base}/verify/${encodeURIComponent(identifier)}`;
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -785,49 +838,124 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const createInvoice = useCallback(
     (
-      input: Omit<Invoice, "id" | "number" | "status" | "verificationUrl"> & {
+      input: Omit<Invoice, "id" | "status" | "verificationUrl"> & {
+        number?: string;
         status?: InvoiceStatus;
         verificationUrl?: string;
       },
     ) => {
       const generatedId = crypto.randomUUID();
-      const baseBranding: InvoiceBranding = {
-        accentColor: input.branding?.accentColor ?? "#10b981",
-        headerText: input.branding?.headerText ?? "Factura Monte Animation",
-        footerText:
-          input.branding?.footerText ??
-          "Gracias por confiar en Monte Animation. Pago mediante transferencia bancaria.",
-        logoDataUrl: input.branding?.logoDataUrl,
-      };
-      const normalizedLineItems = (input.lineItems ?? []).map((item) => ({
-        ...item,
-        id: item.id || crypto.randomUUID(),
-      }));
-      const defaultVerification =
-        input.verificationUrl ??
-        (typeof window !== "undefined"
-          ? `${window.location.origin}/verify/${generatedId}`
-          : `https://billing.monteanimation.com/verify/${generatedId}`);
-      let created: Invoice = {
-        ...input,
-        lineItems: normalizedLineItems,
-        branding: baseBranding,
-        verificationUrl: defaultVerification,
-        id: generatedId,
-        number: "",
-        status: input.status ?? "draft",
-      } as Invoice;
+      let created: Invoice | null = null;
       mutate((draft) => {
-        const number = `MONTE-${String(draft.nextInvoiceSequence).padStart(4, "0")}`;
-        draft.nextInvoiceSequence += 1;
-        created = {
-          ...created,
-          number,
+        const { number: requestedNumber, ...rest } = input;
+        const baseBranding: InvoiceBranding = {
+          accentColor: input.branding?.accentColor ?? "#10b981",
+          headerText: input.branding?.headerText ?? "Factura Monte Animation",
+          footerText:
+            input.branding?.footerText ??
+            "Gracias por confiar en Monte Animation. Pago mediante transferencia bancaria.",
+          logoDataUrl: input.branding?.logoDataUrl,
         };
+        const normalizedLineItems = (input.lineItems ?? []).map((item) => ({
+          ...item,
+          id: item.id || crypto.randomUUID(),
+        }));
+        const trimmedNumber = requestedNumber?.trim();
+        const number = trimmedNumber && trimmedNumber.length
+          ? trimmedNumber
+          : formatInvoiceNumber(
+              draft.invoicePrefix,
+              draft.nextInvoiceSequence,
+              draft.invoiceNumberPadding,
+            );
+        draft.nextInvoiceSequence += 1;
+        const verification =
+          input.verificationUrl ?? resolveVerificationUrl(number || generatedId);
+        created = {
+          ...rest,
+          id: generatedId,
+          number,
+          status: input.status ?? "draft",
+          lineItems: normalizedLineItems,
+          branding: baseBranding,
+          verificationUrl: verification,
+          bankDetails: input.bankDetails ?? draft.defaultBankDetails,
+        } as Invoice;
         draft.invoices.push(created);
         return draft;
       });
-      return created;
+      return created as Invoice;
+    },
+    [mutate],
+  );
+
+  const updateInvoice = useCallback(
+    (
+      id: string,
+      input: Partial<Omit<Invoice, "id">> & {
+        lineItems?: InvoiceLineItem[];
+        branding?: Partial<InvoiceBranding>;
+      },
+    ) => {
+      mutate((draft) => {
+        const invoice = draft.invoices.find((item) => item.id === id);
+        if (!invoice) {
+          return draft;
+        }
+        if (typeof input.projectId === "string") {
+          invoice.projectId = input.projectId;
+        }
+        if (typeof input.number === "string" && input.number.trim().length > 0) {
+          invoice.number = input.number.trim();
+          invoice.verificationUrl = resolveVerificationUrl(invoice.number);
+        }
+        if (typeof input.issueDate === "string") {
+          invoice.issueDate = input.issueDate;
+        }
+        if (typeof input.dueDate === "string") {
+          invoice.dueDate = input.dueDate;
+        }
+        if (typeof input.currency === "string") {
+          invoice.currency = input.currency as Currency;
+        }
+        if (input.notes !== undefined) {
+          invoice.notes = input.notes;
+        }
+        if (input.status) {
+          invoice.status = input.status;
+        }
+        if (input.bankDetails !== undefined) {
+          invoice.bankDetails = input.bankDetails;
+        }
+        if (input.branding) {
+          invoice.branding = { ...invoice.branding, ...input.branding };
+        }
+        if (input.lineItems) {
+          const normalized = input.lineItems.map((item) => ({
+            ...item,
+            id: item.id || crypto.randomUUID(),
+          }));
+          invoice.lineItems = normalized;
+          if (input.subtotal === undefined) {
+            invoice.subtotal = normalized.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+          }
+        }
+        if (typeof input.subtotal === "number") {
+          invoice.subtotal = input.subtotal;
+        }
+        if (typeof input.taxes === "number") {
+          invoice.taxes = input.taxes;
+        }
+        if (typeof input.total === "number") {
+          invoice.total = input.total;
+        } else if (input.lineItems || input.taxes !== undefined || input.subtotal !== undefined) {
+          invoice.total = invoice.subtotal + invoice.taxes;
+        }
+        if (input.attachments) {
+          invoice.attachments = [...input.attachments];
+        }
+        return draft;
+      });
     },
     [mutate],
   );
@@ -1043,6 +1171,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
   }, [mutate]);
 
+  const updateInvoiceNumbering = useCallback(
+    (input: { prefix?: string; nextSequence?: number; padding?: number }) => {
+      mutate((draft) => {
+        if (typeof input.prefix === "string") {
+          draft.invoicePrefix = input.prefix.trim();
+        }
+        if (
+          typeof input.nextSequence === "number" &&
+          Number.isFinite(input.nextSequence) &&
+          input.nextSequence > 0
+        ) {
+          draft.nextInvoiceSequence = Math.floor(input.nextSequence);
+        }
+        if (
+          typeof input.padding === "number" &&
+          Number.isFinite(input.padding) &&
+          input.padding > 0 &&
+          input.padding <= 10
+        ) {
+          draft.invoiceNumberPadding = Math.floor(input.padding);
+        }
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
+  const updateDefaultBankDetails = useCallback(
+    (details: string) => {
+      mutate((draft) => {
+        draft.defaultBankDetails = details.trim();
+        return draft;
+      });
+    },
+    [mutate],
+  );
+
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
@@ -1081,6 +1246,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 id: crypto.randomUUID(),
                 clientId: client.id,
                 name: row.name ?? "Proyecto sin nombre",
+                brand: (row.brand as string) ?? client.name,
                 description: row.description ?? "",
                 status: (row.status as ProjectStatus) ?? "planning",
                 startDate: row.startDate ?? new Date().toISOString().slice(0, 10),
@@ -1119,7 +1285,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
               );
               if (!project) break;
               const invoiceId = crypto.randomUUID();
-              const number = `MONTE-${String(draft.nextInvoiceSequence).padStart(4, "0")}`;
+              const number = formatInvoiceNumber(
+                draft.invoicePrefix,
+                draft.nextInvoiceSequence,
+                draft.invoiceNumberPadding,
+              );
               draft.nextInvoiceSequence += 1;
               draft.invoices.push({
                 id: invoiceId,
@@ -1154,7 +1324,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 },
                 verificationUrl:
                   (row.verificationUrl as string) ??
-                  `https://billing.monteanimation.com/verify/${invoiceId}`,
+                  resolveVerificationUrl(number || invoiceId),
+                bankDetails:
+                  (row.bankDetails as string) ?? draft.defaultBankDetails,
               });
               imported += 1;
               break;
@@ -1307,6 +1479,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateProject,
       deleteProject,
       createInvoice,
+      updateInvoice,
       updateInvoiceStatus,
       recordPayment,
       addExpense,
@@ -1318,6 +1491,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateIntegrations,
       updateAppTemplate,
       resetAppTemplate,
+      updateInvoiceNumbering,
+      updateDefaultBankDetails,
     }),
     [
       state,
@@ -1328,6 +1503,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateProject,
       deleteProject,
       createInvoice,
+      updateInvoice,
       updateInvoiceStatus,
       recordPayment,
       addExpense,
@@ -1339,6 +1515,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateIntegrations,
       updateAppTemplate,
       resetAppTemplate,
+      updateInvoiceNumbering,
+      updateDefaultBankDetails,
     ],
   );
 
